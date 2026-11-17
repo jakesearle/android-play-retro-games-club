@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Raw-path ROM folders can be anywhere, including SD cards (/storage/XXXX-XXXX), so
+         {file.uri} emulators get content:// URIs for any path. -->
+    <root-path name="root" path="/" />
+</paths>

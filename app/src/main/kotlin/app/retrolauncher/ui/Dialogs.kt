@@ -1,0 +1,234 @@
+package app.retrolauncher.ui
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import app.retrolauncher.library.Game
+import kotlinx.coroutines.delay
+import app.retrolauncher.library.RomSource
+
+/** A dialog that closes on B, Start or Select as well as Back, with a title and focusable rows. */
+@Composable
+private fun PadDialog(title: String, onDismiss: () -> Unit, focus: FocusRequester, content: @Composable ColumnScope.() -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        // A dialog has its own window and view. Focus has to be requested from inside it, once
+        // its window has focus (a moment after it appears), so retry briefly.
+        val dialogView = LocalView.current
+        LaunchedEffect(Unit) {
+            for (wait in longArrayOf(0, 50, 100, 150, 200)) {
+                delay(wait)
+                takeControllerFocus(dialogView, focus)
+            }
+        }
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier
+                .width(600.dp)
+                // Fit the 16:9 handheld screen; the list scrolls and the hint row stays visible.
+                .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.9f).dp)
+                // Unhandled, Start would fall back to a "click" on the focused row.
+                .onPad { pad -> if (pad == Pad.B || pad == Pad.START || pad == Pad.SELECT) { onDismiss(); true } else false },
+        ) {
+            Column(Modifier.padding(vertical = 16.dp)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                )
+                content()
+                Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+                    PadHint("A", "Select")
+                    PadHint("B", "Close")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowText(text: String, focused: Boolean, detail: String? = null, enabled: Boolean = true) {
+    val base = if (focused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+    val color = if (enabled) base else base.copy(alpha = 0.5f)
+    Column {
+        Text(text, color = color, fontSize = 17.sp)
+        if (detail != null) Text(detail, color = color.copy(alpha = 0.75f), fontSize = 13.sp)
+    }
+}
+
+@Composable
+private fun Message(text: String) {
+    Text(text, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+}
+
+/** The row a dialog focuses when it opens; pass it to [PadDialog] and to that row. */
+@Composable
+private fun rememberFirstFocus(): FocusRequester = remember { FocusRequester() }
+
+/** Choose the emulator for a game, for this game only or all games on its platform. */
+@Composable
+fun EmulatorPicker(vm: ClubViewModel, game: Game, title: String, onDismiss: () -> Unit) {
+    var scope by remember { mutableStateOf(ChoiceScope.GAME) }
+    val options = remember(game) { vm.options(game) }
+    val current = remember(game) { vm.playerFor(game) }
+    val platformName = vm.platformName(game)
+    val first = rememberFirstFocus()
+
+    PadDialog(title = "Emulator for $title", onDismiss = onDismiss, focus = first) {
+        LazyColumn(Modifier.weight(1f, fill = false)) {
+            item {
+                FocusRow(
+                    onClick = { scope = if (scope == ChoiceScope.GAME) ChoiceScope.PLATFORM else ChoiceScope.GAME },
+                    modifier = Modifier.focusRequester(first),
+                ) { focused ->
+                    RowText(
+                        text = "Apply to: " + if (scope == ChoiceScope.GAME) "this game only" else "all $platformName games",
+                        detail = "Press A to switch",
+                        focused = focused,
+                    )
+                }
+            }
+            if (options.isEmpty()) item { Message("No installed emulator can open this file.") }
+            items(options, key = { it.player.id }) { option ->
+                FocusRow(
+                    onClick = {
+                        if (option.usable) {
+                            vm.setChoice(game, option.player, scope)
+                            onDismiss()
+                        }
+                    },
+                    selected = option.player.id == current?.id,
+                ) { focused ->
+                    RowText(
+                        text = option.player.name + if (option.player.id == current?.id) "  ✓" else "",
+                        detail = option.problem ?: if (option.player.cantResume) "Can't resume" else null,
+                        focused = focused,
+                        enabled = option.usable,
+                    )
+                }
+            }
+            item {
+                FocusRow(onClick = { vm.setChoice(game, null, scope); onDismiss() }) { focused ->
+                    RowText(if (scope == ChoiceScope.GAME) "Use the platform default" else "Clear the platform default", focused)
+                }
+            }
+        }
+    }
+}
+
+/** Several files are this game; the choice is remembered. */
+@Composable
+fun ChooseCopyDialog(row: PickRow, onChoose: (Game) -> Unit, onDismiss: () -> Unit) {
+    val first = rememberFirstFocus()
+    PadDialog(title = "Which copy of ${row.pick.displayTitle}?", onDismiss = onDismiss, focus = first) {
+        Message("These files are all versions RetroAchievements recognizes. Your choice is remembered.")
+        LazyColumn(Modifier.weight(1f, fill = false)) {
+            items(row.copies, key = { it.key }) { game ->
+                FocusRow(
+                    onClick = { onChoose(game) },
+                    modifier = if (game == row.copies.first()) Modifier.focusRequester(first) else Modifier,
+                ) { f -> RowText(game.fileName, f, game.path ?: game.uri) }
+            }
+        }
+    }
+}
+
+@Composable
+fun MenuDialog(
+    vm: ClubViewModel,
+    state: ClubState,
+    onAddFolder: () -> Unit,
+    onRequestAllFiles: () -> Unit,
+    showMessage: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val suggestions = remember(state.sources, state.hasAllFilesAccess) { vm.rawFolderSuggestions() }
+    var confirmUnlink by remember { mutableStateOf(false) }
+    val first = rememberFirstFocus()
+
+    PadDialog(title = "Settings", onDismiss = onDismiss, focus = first) {
+        LazyColumn(Modifier.weight(1f, fill = false)) {
+            item {
+                FocusRow(onClick = { vm.refresh(); onDismiss() }, modifier = Modifier.focusRequester(first)) { f ->
+                    RowText("Refresh games", f, "Asks the club's site for its current picks and searches again.")
+                }
+            }
+            item {
+                FocusRow(onClick = onAddFolder) { f ->
+                    RowText("Add ROM folder…", f, "Opens the system file picker.")
+                }
+            }
+            if (!state.hasAllFilesAccess) {
+                item {
+                    FocusRow(onClick = onRequestAllFiles) { f ->
+                        RowText("Grant all-files access…", f, "Needed for path-based emulators such as RetroArch.")
+                    }
+                }
+            }
+            items(suggestions, key = { "add:$it" }) { path ->
+                FocusRow(onClick = { vm.addSource(RomSource.RawPath(path)); onDismiss() }) { f ->
+                    RowText("Add $path", f, "Raw path folder")
+                }
+            }
+            item {
+                FocusRow(
+                    onClick = {
+                        if (!confirmUnlink && state.linkCount > 0) {
+                            confirmUnlink = true
+                        } else {
+                            val n = vm.unlinkAll()
+                            showMessage("Unlinked $n game${if (n == 1) "" else "s"}. They'll be searched for again.")
+                            onDismiss()
+                        }
+                    },
+                ) { f ->
+                    RowText(
+                        if (confirmUnlink) "Press A again to unlink ${state.linkCount} games" else "Unlink ROM files",
+                        f,
+                        "Forgets which file each game uses (${state.linkCount} linked), so a copy you've added is found.",
+                    )
+                }
+            }
+            if (state.sources.isNotEmpty()) {
+                item {
+                    Text(
+                        "ROM folders (A to remove)",
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                    )
+                }
+            }
+            items(state.sources, key = { "src:${it.key}" }) { source ->
+                FocusRow(onClick = { vm.removeSource(source) }) { f ->
+                    RowText("Remove ${source.label}", f, if (source is RomSource.Saf) "File picker folder" else "Raw path folder")
+                }
+            }
+        }
+    }
+}
