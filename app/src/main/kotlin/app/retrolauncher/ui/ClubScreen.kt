@@ -181,10 +181,9 @@ fun ClubScreen(
                     )
                 }
             }
-            Footer {
+            Footer(start = { PadHint("Start", "Settings") }) {
                 PadHint("A", "Details")
                 PadHint("X", "Play")
-                PadHint("Start", "Settings")
             }
         }
         // Put focus on the card the player was on, so the first D-pad press moves instead of
@@ -293,7 +292,7 @@ fun StatusChip(state: PickState) {
         PickState.NO_EMULATOR -> "No emulator" to Color(0xFFE8C15A)
         PickState.CHOOSE_COPY -> "Choose copy" to Color(0xFFE8C15A)
         PickState.CHECKING -> "Checking…" to Color(0xFF9AA0AA)
-        PickState.MISSING -> "Missing" to Color(0xFFE8835A)
+        PickState.MISSING -> "Missing ROM" to Color(0xFFE8835A)
         PickState.UNKNOWN -> "Unknown" to Color(0xFF9AA0AA)
     }
     Text(
@@ -363,7 +362,7 @@ private fun SettingsCog(onClick: () -> Unit, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun Footer(hints: @Composable () -> Unit) {
+fun Footer(start: @Composable () -> Unit = {}, hints: @Composable () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -371,6 +370,8 @@ fun Footer(hints: @Composable () -> Unit) {
             .padding(horizontal = 24.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // [start] sits at the left edge (Settings on the home screen); [hints] at the right.
+        start()
         Spacer(Modifier.weight(1f))
         hints()
     }
