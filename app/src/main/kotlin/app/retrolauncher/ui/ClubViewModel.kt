@@ -16,6 +16,7 @@ import app.retrolauncher.catalogue.model.Player
 import app.retrolauncher.catalogue.net.CatalogueRepository
 import app.retrolauncher.club.ClubFinder
 import app.retrolauncher.club.ClubPick
+import app.retrolauncher.club.ClubRecheck
 import app.retrolauncher.club.ClubRepository
 import app.retrolauncher.club.ClubResult
 import app.retrolauncher.club.FindResult
@@ -95,7 +96,11 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     )
 
     private var picks: List<ClubPick> = emptyList()
+    /** The club's own picks, without debug test picks: what a re-check compares against. */
+    private var clubPicks: List<ClubPick> = emptyList()
     private var checkJob: Job? = null
+    /** The launch load, a Refresh or a re-check while it runs, so club loads never overlap. */
+    private var clubJob: Job? = null
 
     private val _state = MutableStateFlow(
         ClubState(sources = settings.sources, hasAllFilesAccess = hasAllFilesAccess(), linkCount = links.count())
@@ -103,7 +108,9 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<ClubState> = _state
 
     init {
-        viewModelScope.launch {
+        // Covers the catalogue download too: the first onResume, right after launch, then
+        // doesn't start a second club load beside this one.
+        clubJob = viewModelScope.launch {
             catalogueRepo.loadCached()?.let { cached -> _state.update { it.copy(catalogue = cached.catalogue) } }
             loadClub(force = false)
             try {
@@ -122,7 +129,9 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Reloads the club page (always asking the site), rescans and re-checks every pick. */
     fun refresh() {
-        viewModelScope.launch {
+        val running = clubJob
+        clubJob = viewModelScope.launch {
+            running?.join()
             hashLibrary.forget()
             loadClub(force = true)
         }
@@ -132,8 +141,9 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         val result = withContext(Dispatchers.IO) { clubRepo.load(force) }
         when (result) {
             is ClubResult.Ok -> {
+                clubPicks = result.picks
                 picks = result.picks + debugPicks()
-                val status = if (result.fromCache) "Offline · games from ${ago(result.fetchedAt)}" else null
+                val status = offlineStatus(result.fetchedAt.takeIf { result.fromCache })
                 _state.update { s ->
                     s.copy(
                         status = status,
@@ -152,15 +162,45 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Quietly checks for new picks when the player comes back (from an emulator, say). The
+     * repository decides whether the saved page is still fresh, so usually this costs no network.
+     * Nothing flashes: the cards only change if the club has moved on, and errors keep what's shown.
+     */
+    private fun recheckClub() {
+        if (clubJob?.isActive == true) return
+        clubJob = viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { clubRepo.load(force = false) }
+            when (val recheck = ClubRecheck.of(clubPicks, result)) {
+                ClubRecheck.Nothing -> Unit
+                is ClubRecheck.SamePicks -> _state.update { s ->
+                    // Only touch our own header messages, not, say, a catalogue error.
+                    if (s.status == null || s.status.startsWith("Offline")) s.copy(status = offlineStatus(recheck.offlineSince)) else s
+                }
+                is ClubRecheck.NewPicks -> {
+                    clubPicks = recheck.picks
+                    picks = recheck.picks + debugPicks()
+                    _state.update { s ->
+                        s.copy(
+                            status = offlineStatus(recheck.offlineSince),
+                            rows = picks.map { p -> s.rows.firstOrNull { it.pick == p } ?: PickRow(p) },
+                        )
+                    }
+                    checkPicks()
+                }
+            }
+        }
+    }
+
+    private fun offlineStatus(since: Instant?): String? = since?.let { "Offline · games from ${ago(it)}" }
+
+    /**
      * Debug builds only: test picks added with adb, so matching can be tried on games that
      * aren't current club picks. Each entry is "Title (CONSOLE)|https://retroachievements.org/game/ID",
      * optionally followed by "|Event label" to pose as that kind of pick (a special, say).
      */
     fun setDebugPicks(entries: List<String>) {
-        val old = debugPicks()
         settings.debugPicks = entries
-        val clubOnly = picks.filterNot { it in old }
-        picks = clubOnly + debugPicks()
+        picks = clubPicks + debugPicks()
         _state.update { s -> s.copy(rows = picks.map { p -> s.rows.firstOrNull { it.pick == p } ?: PickRow(p) }) }
         checkPicks()
     }
@@ -366,6 +406,8 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(hasAllFilesAccess = access, revision = it.revision + 1) }
         // An emulator may have been installed or removed while the user was away.
         if (changed) checkPicks() else refreshEmulators()
+        // The club may have moved on (a new week at midnight UTC) while the launcher stayed open.
+        recheckClub()
     }
 
     fun addSource(source: RomSource) {
