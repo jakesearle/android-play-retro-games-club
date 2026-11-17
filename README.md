@@ -48,3 +48,8 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
 Add `-PcatalogueLive=true` to check every entry of the live emulator catalogue,
 or `-PclubPage=/path/to/saved.html` to check the parser against a saved copy of
 the club's page.
+
+## Licence
+
+[MIT](LICENSE). Code ported from rcheevos (MIT) and libchdr (BSD-3-Clause) keeps its own
+licence; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
