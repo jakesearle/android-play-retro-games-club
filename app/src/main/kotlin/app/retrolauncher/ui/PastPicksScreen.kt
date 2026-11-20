@@ -47,6 +47,9 @@ fun PastPicksScreen(
     past: List<PickRow>,
     ra: RaState,
     marks: Map<Int, PickMark>,
+    /** A slow ROM search in progress, if any, and how to stop it. */
+    scan: ScanProgress?,
+    onStop: () -> Unit,
     onLoadPlayers: (List<Int>) -> Unit,
     filter: PastFilter,
     onFilter: (PastFilter) -> Unit,
@@ -105,12 +108,20 @@ fun PastPicksScreen(
             },
     ) {
         val status = when {
+            scan != null -> scan.text
             checking -> "Checking ROMs…"
             shownFilter.sort == PastSort.MOST_POPULAR && ra.loadingPlayers -> "Loading player counts…"
             shownFilter.filtering -> "${rows.size} of ${past.size} picks"
             else -> "${past.size} picks"
         }
-        Header(status, title = "History", onFilter = { filterOpen = true }, filtering = shownFilter.filtering, onSurprise = ::surprise)
+        Header(
+            status,
+            title = "History",
+            onFilter = { filterOpen = true },
+            filtering = shownFilter.filtering,
+            onSurprise = ::surprise,
+            onStop = if (scan != null) onStop else null,
+        )
         if (rows.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text(

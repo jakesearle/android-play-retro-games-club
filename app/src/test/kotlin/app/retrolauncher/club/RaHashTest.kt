@@ -175,6 +175,26 @@ class ClubFinderTest {
     }
 
     @Test
+    fun `progress is reported for files read, not cached ones, and a stop ends the search`() {
+        val candidates = listOf(game("x.gba", otherRom), game("y.gba", otherRom.reversedArray()), game("z.gba", gameRom))
+        val reports = mutableListOf<Pair<Int, Int>>()
+        finder().find(pick, candidates, progress = { d, t -> reports += d to t })
+        assertEquals(3, reports.size)
+        assertEquals(3 to 3, reports.last())
+
+        reports.clear()
+        finder().find(pick, candidates, progress = { d, t -> reports += d to t })
+        assertTrue(reports.isEmpty()) // all hashed before: nothing slow to report
+
+        files.clear()
+        val fresh = listOf(game("p.gba", otherRom, 5), game("q.gba", gameRom, 5))
+        var stop = false
+        val stopped = finder().find(pick, fresh, cancelled = { stop }, progress = { _, _ -> stop = true })
+        assertEquals(1, files.values.sumOf { it.opens }) // stopped after the first file
+        assertTrue(stopped is FindResult.NotFound)
+    }
+
+    @Test
     fun `duplicates make the player choose`() {
         val r = finder().find(pick, listOf(game("a.gba", gameRom), game("b.gba", gameRom))) as FindResult.Found
         assertEquals(2, r.matches.size)

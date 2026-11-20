@@ -59,7 +59,16 @@ import java.time.Duration
 import java.time.Instant
 
 /** NO_EMULATOR: the ROM was found, but no installed emulator can launch it. */
-enum class PickState { CHECKING, READY, NO_EMULATOR, CHOOSE_COPY, MISSING, UNKNOWN }
+/** NOT_CHECKED: the search was stopped before reaching this pick. */
+enum class PickState { CHECKING, READY, NO_EMULATOR, CHOOSE_COPY, MISSING, UNKNOWN, NOT_CHECKED }
+
+/**
+ * How far a slow search has got: reading the ROM folders ([total] 0), or hashing [console]'s
+ * ROMs, [done] of [total].
+ */
+data class ScanProgress(val console: String? = null, val done: Int = 0, val total: Int = 0) {
+    val text: String get() = if (console == null || total == 0) "Looking through your ROM folders…" else "Checking $console ROMs… $done of $total"
+}
 
 /** A club pick and whether it can be played. */
 data class PickRow(
@@ -96,6 +105,8 @@ data class ClubState(
     val marks: Map<Int, PickMark> = emptyMap(),
     /** A chosen file that doesn't match; the home screen asks what to do with it. */
     val unrecognized: UnrecognizedChoice? = null,
+    /** A search that's taking a while, shown in the header with a Stop button; null when idle. */
+    val scan: ScanProgress? = null,
 )
 
 /** RetroAchievements: who's signed in, and what the Web API has said. */
@@ -162,6 +173,9 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     /** Past picks the past-picks page has shown, so they're checked (again, after a rescan). */
     private val pastRequested = LinkedHashSet<ClubPick>()
     private var pastJob: Job? = null
+    /** Set by [stopChecking]; the finder checks it between files, so a long hash stops promptly. */
+    @Volatile private var stopRequested = false
+    private var lastProgressAt = 0L
     /** The club's own picks, without debug test picks: what a re-check compares against. */
     private var clubPicks: List<ClubPick> = emptyList()
     private var checkJob: Job? = null
@@ -303,16 +317,20 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         val catalogue = _state.value.catalogue ?: return
         if (picks.isEmpty()) return
         checkJob?.cancel()
+        stopRequested = false
         checkJob = viewModelScope.launch {
-            _state.update { s -> s.copy(rows = s.rows.map { it.copy(state = PickState.CHECKING) }) }
+            _state.update { s -> s.copy(rows = s.rows.map { it.copy(state = PickState.CHECKING) }, scan = ScanProgress()) }
             val games = withContext(Dispatchers.IO) { scanner.scan(settings.sources, catalogue) }.values.flatten()
             scannedGames = games
+            _state.update { it.copy(scan = null) }
+            if (stopRequested) return@launch
             // Past picks already shown are checked again against the new scan.
             _state.update { s -> s.copy(past = s.past.map { if (it.pick in pastRequested) it.copy(state = PickState.CHECKING) else it }) }
             for (pick in picks) {
-                if (!isActive) return@launch
+                if (!isActive || stopRequested) return@launch
                 val row = withContext(Dispatchers.IO) { check(catalogue, pick, games) }
-                _state.update { s -> s.copy(rows = s.rows.map { if (it.pick == pick) row else it }) }
+                if (stopRequested) return@launch // cut short: not a real answer
+                _state.update { s -> s.copy(rows = s.rows.map { if (it.pick == pick) row else it }, scan = null) }
             }
             checkPast(emptyList())
         }
@@ -340,7 +358,11 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     fun setPastFilter(filter: PastFilter) {
         _state.update { it.copy(pastFilter = filter) }
         settings.pastFilter = filter.encode()
-        if (filter.rom != RomFilter.ANY) checkPast(_state.value.past.map { it.pick })
+        if (filter.rom != RomFilter.ANY) {
+            // Asking to filter by ROM is asking to check them all, including any a Stop left unchecked.
+            _state.update { s -> s.copy(past = s.past.map { if (it.state == PickState.NOT_CHECKED) it.copy(state = PickState.CHECKING) else it }) }
+            checkPast(_state.value.past.map { it.pick })
+        }
     }
 
     /**
@@ -352,14 +374,37 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         pastRequested += batch
         if (pastJob?.isActive == true) return
         val catalogue = _state.value.catalogue ?: return
+        stopRequested = false
         pastJob = viewModelScope.launch {
-            while (isActive) {
+            while (isActive && !stopRequested) {
                 val next = _state.value.past.firstOrNull { it.pick in pastRequested && it.state == PickState.CHECKING }?.pick ?: break
                 val games = scannedGames ?: withContext(Dispatchers.IO) { scanner.scan(settings.sources, catalogue) }.values.flatten()
                     .also { scannedGames = it }
                 val row = withContext(Dispatchers.IO) { check(catalogue, next, games) }
-                _state.update { s -> s.copy(past = s.past.map { if (it.pick == next) row else it }) }
+                if (stopRequested) break
+                _state.update { s -> s.copy(past = s.past.map { if (it.pick == next) row else it }, scan = null) }
             }
+        }
+    }
+
+    /**
+     * Stops searching: the pick being searched and any still waiting become NOT_CHECKED, and
+     * Refresh games (or Search again) picks up where it left off, since hashes already read are kept.
+     */
+    fun stopChecking() {
+        stopRequested = true
+        checkJob?.cancel()
+        pastJob?.cancel()
+        fun stop(row: PickRow) = if (row.state == PickState.CHECKING) PickRow(row.pick, PickState.NOT_CHECKED) else row
+        _state.update { s -> s.copy(rows = s.rows.map(::stop), past = s.past.map(::stop), scan = null) }
+    }
+
+    /** Reports a slow search's progress, at most a few times a second. */
+    private fun progressFor(pick: ClubPick): (Int, Int) -> Unit = { done, total ->
+        val now = android.os.SystemClock.uptimeMillis()
+        if (done == total || now - lastProgressAt > 150) {
+            lastProgressAt = now
+            _state.update { it.copy(scan = ScanProgress(pick.console?.name ?: "ROM", done, total)) }
         }
     }
 
@@ -374,7 +419,7 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         val candidates = if (console == null) emptyList() else games.filter { g ->
             catalogue.platform(g.platformId)?.let { PlatformConsoles.holds(it, console.id) } == true
         }
-        return when (val result = finder.find(pick, candidates)) {
+        return when (val result = finder.find(pick, candidates, cancelled = { stopRequested }, progress = progressFor(pick))) {
             is FindResult.Found -> ClubFinder.choose(result)
                 ?.let { found(catalogue, pick, it) }
                 ?: PickRow(pick, PickState.CHOOSE_COPY, copies = result.matches)

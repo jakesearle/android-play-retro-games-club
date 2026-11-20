@@ -209,8 +209,15 @@ class ClubFinder(
     /**
      * @param candidates games in ROM folders for the pick's console.
      * @param cancelled checked between files.
+     * @param progress told (files looked at, files in all) after each file that had to be read,
+     *   so a slow first search can show how far it's got; files with a cached hash aren't reported.
      */
-    fun find(pick: ClubPick, candidates: List<Game>, cancelled: () -> Boolean = { false }): FindResult {
+    fun find(
+        pick: ClubPick,
+        candidates: List<Game>,
+        cancelled: () -> Boolean = { false },
+        progress: (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): FindResult {
         val console = pick.console ?: return FindResult.UnknownGame(RaConsoles.labelOf(pick.title))
         val gameId = pick.gameId
         if (gameId <= 0) return FindResult.UnknownGame(console.label)
@@ -225,7 +232,7 @@ class ClubFinder(
         val ordered = discAware(candidates.filterNot { RaHash.isIgnored(it.fileName) })
             .sortedWith(compareBy<Game> { it.extension == "m3u" }.thenByDescending { score(titleWords, it.fileName) })
         val matches = mutableListOf<Game>()
-        for (game in ordered) {
+        for ((index, game) in ordered.withIndex()) {
             if (cancelled()) break
             // A playlist only counts if none of the discs it lists matched on their own.
             if (game.extension == "m3u" && matches.isNotEmpty()) continue
@@ -233,7 +240,7 @@ class ClubFinder(
                 open(game)?.let { RaHash.hash(console.id, it) }?.also { hashCache.put(console.id, game, it) }
             } catch (_: IOException) {
                 null
-            }
+            }.also { progress(index + 1, ordered.size) }
             if (hash != null && hash in wanted) matches += game
         }
         return if (matches.isNotEmpty()) FindResult.Found(matches, linked = false) else FindResult.NotFound(console, ordered.size)

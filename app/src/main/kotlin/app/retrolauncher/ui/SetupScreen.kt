@@ -239,6 +239,7 @@ private fun SetupStatus(state: PickState) {
         PickState.NO_EMULATOR -> "No emulator installed" to Color(0xFFE8C15A)
         PickState.CHOOSE_COPY -> "Several copies found" to Color(0xFFE8C15A)
         PickState.CHECKING -> "Checking…" to MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+        PickState.NOT_CHECKED -> "Not checked" to MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
         PickState.UNKNOWN -> "Unknown console" to MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
     }
     Text(text, color = color, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)

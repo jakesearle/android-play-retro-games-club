@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -199,6 +200,8 @@ fun ClubScreen(
             past = state.past,
             ra = state.ra,
             marks = state.marks,
+            scan = state.scan,
+            onStop = vm::stopChecking,
             onLoadPlayers = vm::loadPlayers,
             filter = state.pastFilter,
             onFilter = { vm.setPastFilter(it); pastShown = PAST_BATCH; pastFocus = 0 },
@@ -220,11 +223,17 @@ fun ClubScreen(
                     when (pad) {
                         Pad.START -> { menuOpen = true; true }
                         Pad.SELECT -> { openPast(); true }
+                        Pad.Y -> if (state.scan != null) { vm.stopChecking(); true } else false
                         else -> false
                     }
                 },
         ) {
-            Header(state.status, onSettings = { menuOpen = true }, onPast = ::openPast)
+            Header(
+                state.scan?.text ?: state.status,
+                onSettings = { menuOpen = true },
+                onPast = ::openPast,
+                onStop = if (state.scan != null) vm::stopChecking else null,
+            )
             // Two cards side by side, scrolling vertically; the grid keeps the focused card in view.
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
@@ -254,7 +263,11 @@ fun ClubScreen(
                     )
                 }
             }
-            Footer(start = { PadHint("Start", "Settings"); PadHint("Select", "History") }) {
+            Footer(start = {
+                PadHint("Start", "Settings")
+                PadHint("Select", "History")
+                if (state.scan != null) PadHint("Y", "Stop checking")
+            }) {
                 PadHint("X", "Play")
                 PadHint("A", "Details")
             }
@@ -418,6 +431,7 @@ fun StatusChip(state: PickState) {
         PickState.NO_EMULATOR -> "No emulator" to Color(0xFFE8C15A)
         PickState.CHOOSE_COPY -> "Choose copy" to Color(0xFFE8C15A)
         PickState.CHECKING -> "Checking…" to Color(0xFF9AA0AA)
+        PickState.NOT_CHECKED -> "Not checked" to Color(0xFF9AA0AA)
         PickState.MISSING -> "Missing ROM" to Color(0xFFE8835A)
         PickState.UNKNOWN -> "Unknown" to Color(0xFF9AA0AA)
     }
@@ -451,6 +465,8 @@ fun Header(
     onFilter: (() -> Unit)? = null,
     filtering: Boolean = false,
     onSurprise: (() -> Unit)? = null,
+    /** While a slow search runs: stops it. */
+    onStop: (() -> Unit)? = null,
 ) {
     Row(
         Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
@@ -461,6 +477,7 @@ fun Header(
             Text(status, fontSize = 14.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f), maxLines = 1, modifier = Modifier.padding(start = 16.dp))
         }
         if (onHelp != null) HelpButton(onHelp, Modifier.padding(start = 12.dp))
+        if (onStop != null) StopButton(onStop, Modifier.padding(start = 12.dp))
         if (onSurprise != null) SurpriseButton(onSurprise, Modifier.padding(start = 12.dp))
         if (onFilter != null) FilterButton(onFilter, filtering, Modifier.padding(start = 12.dp))
         if (onPast != null) PastButton(onPast, Modifier.padding(start = 12.dp))
@@ -492,6 +509,17 @@ private fun SettingsCog(onClick: () -> Unit, modifier: Modifier = Modifier) = He
         contentDescription = "Settings",
         tint = if (focused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
         modifier = Modifier.size(28.dp),
+    )
+}
+
+/** Stops a slow ROM search: a cross, beside the progress it stops. */
+@Composable
+private fun StopButton(onClick: () -> Unit, modifier: Modifier = Modifier) = HeaderButton(onClick, modifier) { focused ->
+    Icon(
+        Icons.Filled.Close,
+        contentDescription = "Stop checking",
+        tint = if (focused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+        modifier = Modifier.size(26.dp),
     )
 }
 

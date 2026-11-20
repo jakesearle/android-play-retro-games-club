@@ -123,6 +123,7 @@ fun GameView(
                 add(Action("Search again", Icons.Filled.Refresh) { vm.checkPicks() })
             }
             PickState.UNKNOWN -> add(Action("Add ROM folder", Icons.Filled.Add) { onAddFolder() })
+            PickState.NOT_CHECKED -> add(Action("Search again", Icons.Filled.Refresh) { vm.checkPicks() })
             PickState.CHECKING -> Unit
         }
         if (pick.raUrl.isNotEmpty()) add(Action("RetroAchievements", Icons.Filled.Star) { onOpenUrl(pick.raUrl) })
@@ -278,6 +279,7 @@ private fun statusLine(row: PickRow, vm: ClubViewModel, @Suppress("UNUSED_PARAME
         PickState.NO_EMULATOR -> "${row.game?.fileName.orEmpty()}\n${row.message.orEmpty()}" + noAchievements(row, vm)
         PickState.CHOOSE_COPY -> "${row.copies.size} copies match. Choose which to play; it's remembered."
         PickState.CHECKING -> "Looking for this game in your ROM folders…"
+        PickState.NOT_CHECKED -> "The search was stopped before this game was checked. Search again to finish; ROMs already read aren't read again."
         PickState.MISSING, PickState.UNKNOWN ->
             (row.message ?: "Not found.") + if (!hasSources) "\nNo ROM folders added yet." else ""
     }
