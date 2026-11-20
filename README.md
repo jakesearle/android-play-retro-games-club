@@ -69,7 +69,6 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
 
 **Nice to have**
 - **Share logs** from Settings for bug reports (Discord users can't run adb).
-- **A countdown** on the home screen ("New Game of the Week in 2 days").
 
 ## Later
 

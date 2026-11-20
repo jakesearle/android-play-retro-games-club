@@ -243,6 +243,26 @@ object ClubPage {
         }
     }
 
+    /**
+     * When a current pick ends: the date in its "next" line ("New week starts November 22, 2026"),
+     * else the end of its period (a week, month or quarter after it started). Midnight UTC, as
+     * the club's countdown runs. Null for a special with neither.
+     */
+    fun endsAt(pick: ClubPick): Instant? {
+        dayInText(pick.next)?.let { return it }
+        val event = pick.event
+        val (type, length) = PERIODS.entries.firstOrNull { event.startsWith(it.key) }?.let { it.key to it.value } ?: return null
+        val start = periodStart(event.removePrefix(type).trim()) ?: return null
+        return length(start).atStartOfDay().toInstant(ZoneOffset.UTC)
+    }
+
+    private val PERIODS: Map<String, (LocalDate) -> LocalDate> = mapOf(
+        "Game of the Week" to { d -> d.plusWeeks(1) },
+        "Game of the Month" to { d -> d.plusMonths(1) },
+        "Romhack of the Month" to { d -> d.plusMonths(1) },
+        "Game of the Season" to { d -> d.plusMonths(3) },
+    )
+
     /** Whether a page fetched at [fetched] can be used at [now] without asking the site. */
     fun cacheIsFresh(now: Instant, fetched: Instant, nextChange: Instant?): Boolean {
         if (fetched.toEpochMilli() <= 0 || now.isBefore(fetched)) return false // clock went backwards

@@ -82,6 +82,21 @@ internal data class Card(
  * then any other pick, such as a special event or a second pick of one type, labelled with its
  * own event name, then test picks (debug builds only).
  */
+/**
+ * How long a current pick has left, for the bottom of its card: "3 days left", "Last day" in its
+ * final 24 hours, or null once it's over (the page will move on) or when the end isn't known.
+ * Days round up, so "2 days left" means more than one day.
+ */
+internal fun timeLeftLabel(endsAt: java.time.Instant?, now: java.time.Instant): String? {
+    endsAt ?: return null
+    val millis = java.time.Duration.between(now, endsAt).toMillis()
+    if (millis <= 0) return null
+    val days = (millis + DAY_MS - 1) / DAY_MS
+    return if (days <= 1) "Last day" else "$days days left"
+}
+
+private const val DAY_MS = 24L * 60 * 60 * 1000
+
 internal fun homeCards(rows: List<PickRow>): List<Card> {
     val used = mutableSetOf<PickRow>()
     val basic = PickType.entries.map { type ->
@@ -131,7 +146,14 @@ fun ClubScreen(
     var pastShown by rememberSaveable { mutableIntStateOf(PAST_BATCH) }
     var pastFocus by rememberSaveable { mutableIntStateOf(0) }
 
-    val cards = remember(state.rows) { homeCards(state.rows) }
+    // Each current pick's time left goes at the bottom of its card; worked out again on resume.
+    val cards = remember(state.rows, state.revision) {
+        val now = java.time.Instant.now()
+        homeCards(state.rows).map { card ->
+            val row = card.row ?: return@map card
+            if (row.pick.event == DEBUG_EVENT) card else card.copy(note = timeLeftLabel(app.retrolauncher.club.ClubPage.endsAt(row.pick), now))
+        }
+    }
     val grid = rememberLazyGridState()
     val gridRows = rememberGridRows(grid, CARD_HEIGHT + 16.dp)
     val requesters = remember(cards.size) { List(cards.size) { FocusRequester() } }

@@ -438,3 +438,27 @@ class PlainNoticesTest {
         )
     }
 }
+
+class TimeLeftTest {
+    private fun pick(event: String, next: String = "") = ClubPick(event, next, "X (GBA)", "", "", "", "", emptyList())
+    private fun utc(text: String) = Instant.parse(text)
+
+    @Test
+    fun `a pick ends at its next line's date, else its period's end`() {
+        assertEquals(utc("2026-11-22T00:00:00Z"), ClubPage.endsAt(pick("Game of the Week November 15 - 21, 2026", "New week starts November 22, 2026")))
+        assertEquals(utc("2026-11-22T00:00:00Z"), ClubPage.endsAt(pick("Game of the Week November 15 - 21, 2026")))
+        assertEquals(utc("2026-12-01T00:00:00Z"), ClubPage.endsAt(pick("Romhack of the Month November 2026")))
+        assertEquals(utc("2027-01-01T00:00:00Z"), ClubPage.endsAt(pick("Game of the Season Q4 2026 (Oct 1 - Dec 31)")))
+        assertNull(ClubPage.endsAt(pick("Halloween Special")))
+    }
+
+    @Test
+    fun `days left round up, with the final day called out`() {
+        val end = utc("2026-11-22T00:00:00Z")
+        assertEquals("3 days left", app.retrolauncher.ui.timeLeftLabel(end, utc("2026-11-19T00:00:00Z")))
+        assertEquals("2 days left", app.retrolauncher.ui.timeLeftLabel(end, utc("2026-11-20T09:00:00Z")))
+        assertEquals("Last day", app.retrolauncher.ui.timeLeftLabel(end, utc("2026-11-21T03:00:00Z")))
+        assertNull(app.retrolauncher.ui.timeLeftLabel(end, utc("2026-11-22T00:00:01Z")))
+        assertNull(app.retrolauncher.ui.timeLeftLabel(null, end))
+    }
+}
