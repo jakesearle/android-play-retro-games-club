@@ -8,6 +8,13 @@ an installed emulator. It's built for controller-first handhelds such as the
 Retroid Pocket 5 (Android 13), and is the Android counterpart of the
 [NextUI Pak](https://github.com/jakesearle/nextui-play-retro-games-club).
 
+[<img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png"
+  alt="Get it on Obtainium" height="80">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/jakesearle/android-play-retro-games-club)
+
+Install and update it with [Obtainium](https://github.com/ImranR98/Obtainium), which
+follows this repository's GitHub releases. (Until the first release is published, there's
+nothing for it to install yet.)
+
 Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or RetroAchievements.
 
 ## How it works
@@ -58,30 +65,30 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   wrong one, so it's on hold until we decide on ScreenScraper.
 
 **Release basics**
-- **Signed release build** and a place for the APK (the repo is private), plus an in-app
-  "new version available" check. Release builds are already shrunk with R8 and sign
+- **Signed release build** on GitHub releases, for Obtainium to install and update, plus an
+  in-app "new version available" check. Release builds are already shrunk with R8 and sign
   themselves once `keystore.properties` exists (see `keystore.properties.example`); what's
-  left is creating the key and checking a shrunk build all the way through on a device.
-- **"Add to Obtainium" button** at the top of this README, using Obtainium's badge and its
-  `obtainium://add/<repo URL>` link (through Obtainium's web redirect, since GitHub won't
-  link a custom scheme). Needs the repo public and the APK attached to GitHub releases, so
-  Obtainium can see new versions.
+  left is creating the key, checking a shrunk build all the way through on a device, and
+  publishing the first release.
 - **Testing beyond the Retroid Pocket 5:** 4:3 and near-square screens, small 3.5-4" displays,
   Android 10-15, and handhelds with A/B swapped.
-- **A heads-up to Joey's Retro Handhelds** that the app reads the club page (and maybe ask
-  for a small JSON feed, which wouldn't break when the site is redesigned).
 
 **ROM matching**
 - **More disc formats.** Not read yet: GameCube WBFS/CISO, Wii (encrypted partitions), and
   3DO, Neo Geo CD, Jaguar CD and PC-FX. GameCube RVZ is checked against a real disc (Super
   Mario Sunshine matches RetroAchievements), and so are PSP ISO and DVD CHD (zstd) images
-  (Grand Theft Auto: Chinatown Wars and Lumines match). Sega CD, Saturn, PC Engine CD,
+  (Grand Theft Auto: Chinatown Wars and Lumines match) and PS1 CD CHDs (six games, all
+  three CD codecs). Sega CD, Saturn, PC Engine CD,
   Dreamcast, GameCube ISO/GCZ, and CHDs using `huff` or `flac`, are tested on made-up
   images; they still need checking on a real disc of each.
 
 ## Later
 
 Ideas we've looked into and set aside for now.
+
+- **A feed from the club's site.** The app reads the club's web page (Joey's Retro
+  Handhelds know). A small JSON feed, if they ever offer one, wouldn't break when the site
+  is redesigned.
 
 - **Start from the auto save state (Resume).** Like the NextUI Pak's X, offer to carry on
   from where you quit. It depends on the emulator:
