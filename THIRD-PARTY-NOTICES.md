@@ -73,6 +73,7 @@ Used as Gradle dependencies; each ships its own licence.
 |---|---|
 | [XZ for Java](https://tukaani.org/xz/java.html) (LZMA decoding for CHD) | 0BSD |
 | [jsoup](https://jsoup.org/) (reading the club's page) | MIT |
+| [Apache Commons Compress](https://commons.apache.org/proper/commons-compress/) (reading .7z ROMs), with Commons IO, Lang and Codec | Apache-2.0 |
 | Kotlin standard library, kotlinx.coroutines, kotlinx.serialization | Apache-2.0 |
 | AndroidX and Jetpack Compose | Apache-2.0 |
 

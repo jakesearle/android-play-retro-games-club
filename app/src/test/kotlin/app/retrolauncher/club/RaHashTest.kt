@@ -86,6 +86,15 @@ class RaHashTest {
     }
 
     @Test
+    fun `7z cartridge ROMs hash the file inside, skipping readmes`() {
+        val nes = "NES\u001a".toByteArray() + ByteArray(12) + rom
+        val archive = sevenZip("readme.txt" to "hi".toByteArray(), "Folder/Game.nes" to nes)
+        assertEquals(md5(rom), RaHash.hash(RaConsoles.NINTENDO, SeekableRom("Game.7z", archive)))
+        // Without random access the archive can't be read, so there's no hash rather than a wrong one.
+        assertEquals(null, RaHash.hash(RaConsoles.NINTENDO, Rom("Game.7z", archive)))
+    }
+
+    @Test
     fun `zipped cartridge ROMs hash the file inside, skipping readmes`() {
         val zipped = zip("readme.txt" to "hi".toByteArray(), "__MACOSX/._x.gba" to ByteArray(4), "Game.gba" to rom)
         assertEquals(md5(rom), RaHash.hash(RaConsoles.GAMEBOY_ADVANCE, Rom("Game.zip", zipped)))
@@ -224,4 +233,25 @@ class VerifyChosenTest {
         }
         assertEquals(ClubFinder.Verdict.Unreadable("card removed"), ClubFinder.verifyChosen(lib, gba, 5068, broken))
     }
+}
+
+/** A 7z archive (LZMA2, the 7-Zip default) of [entries], written with Commons Compress. */
+fun sevenZip(vararg entries: Pair<String, ByteArray>): ByteArray {
+    val channel = org.apache.commons.compress.utils.SeekableInMemoryByteChannel()
+    org.apache.commons.compress.archivers.sevenz.SevenZOutputFile(channel).use { out ->
+        for ((name, bytes) in entries) {
+            val entry = org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry().apply { this.name = name; size = bytes.size.toLong() }
+            out.putArchiveEntry(entry)
+            out.write(bytes)
+            out.closeArchiveEntry()
+        }
+    }
+    return channel.array().copyOf(channel.size().toInt())
+}
+
+/** A ROM with random access, as files in ROM folders have. */
+class SeekableRom(override val name: String, private val bytes: ByteArray) : RomFile {
+    override val parentName: String? = null
+    override fun open(): InputStream = ByteArrayInputStream(bytes)
+    override fun openChannel(): java.nio.channels.SeekableByteChannel = org.apache.commons.compress.utils.SeekableInMemoryByteChannel(bytes)
 }

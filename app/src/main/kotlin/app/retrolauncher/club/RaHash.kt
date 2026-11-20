@@ -53,6 +53,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.security.MessageDigest
 import java.util.zip.ZipInputStream
+import org.apache.commons.compress.archivers.sevenz.SevenZFile
 
 /** A ROM file to hash, from a raw path or a `content://` document. */
 interface RomFile {
@@ -74,8 +75,8 @@ interface RomFile {
 /**
  * RetroAchievements ROM hashes, as rcheevos computes them for cartridge-based consoles
  * (`src/rhash/hash.c` and `hash_rom.c`, MIT licence), so a ROM counts only if RA recognises
- * its contents. As in the NextUI Pak, a zipped cartridge ROM is hashed by the file inside,
- * because that is what emulators hand rcheevos.
+ * its contents. As in the NextUI Pak, a cartridge ROM in a .zip or .7z is hashed by the
+ * file inside, because that is what emulators hand rcheevos.
  *
  * PlayStation and PlayStation 2 discs (CHD, CUE/BIN, ISO, M3U) are hashed by [DiscHash].
  * Other disc-based consoles (Saturn, Dreamcast, Sega CD, ...) aren't supported: [supports]
@@ -122,6 +123,10 @@ object RaHash {
         if (consoleId in DISC) return disc(consoleId, file)
         if (file.name.endsWith(".zip", ignoreCase = true)) {
             val (innerName, bytes) = firstRomInZip(file) ?: return null
+            return hash(consoleId, BytesRom(innerName, file.parentName, bytes))
+        }
+        if (file.name.endsWith(".7z", ignoreCase = true)) {
+            val (innerName, bytes) = firstRomIn7z(file) ?: return null
             return hash(consoleId, BytesRom(innerName, file.parentName, bytes))
         }
         return when (consoleId) {
@@ -251,6 +256,22 @@ object RaHash {
             entry = zip.nextEntry
         }
         null
+    }
+
+    /**
+     * The first file in a 7z archive that looks like a ROM, as for zips. 7z keeps its index at
+     * the end of the file, so it needs random access ([RomFile.openChannel]); without it the
+     * archive can't be read and gets no hash.
+     */
+    private fun firstRomIn7z(file: RomFile): Pair<String, ByteArray>? {
+        val channel = file.openChannel() ?: return null
+        return SevenZFile.builder().setSeekableByteChannel(channel).get().use { archive ->
+            val entry = archive.entries.firstOrNull { e ->
+                val name = e.name.orEmpty().substringAfterLast('/')
+                !e.isDirectory && e.hasStream() && name.isNotEmpty() && !e.name.startsWith("__MACOSX/") && !isIgnored(name)
+            } ?: return@use null
+            entry.name.substringAfterLast('/') to archive.getInputStream(entry).use { readUpTo(it, MAX_BUFFER) }
+        }
     }
 
     private class BytesRom(override val name: String, override val parentName: String?, val bytes: ByteArray) : RomFile {

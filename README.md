@@ -18,7 +18,8 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
 - **Finding a pick among your ROMs** works by RetroAchievements hash. The app
   checks the ROMs in your folders for that console against RetroAchievements'
   list of known ROMs, so any file name works but only a recognized version
-  counts. Once a game has launched, its file is remembered.
+  counts. Cartridge ROMs can be plain, zipped or in a .7z. Once a game has
+  launched, its file is remembered.
 - **Launching** uses the open emulator catalogue published by
   [CocoonFE](https://github.com/KansoMirai/CocoonFE), downloaded and cached at
   runtime, to build each emulator's launch intent.
@@ -67,8 +68,6 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   for a small JSON feed, which wouldn't break when the site is redesigned).
 
 **ROM matching**
-- **`.7z` ROMs.** Only `.zip` is opened today, so 7z files never match (Apache Commons
-  Compress can read 7z).
 - **More disc consoles.** Prioritise the ones in the club's history (Saturn, Dreamcast,
   Sega CD, PS2 DVD images as CHD…).
 - **Progress during the first scan,** with a way to cancel: it reads every ROM for a console.

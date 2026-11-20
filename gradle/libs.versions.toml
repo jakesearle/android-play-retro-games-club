@@ -10,6 +10,7 @@ junit = "4.13.2"
 lifecycle = "2.9.4"
 jsoup = "1.21.2"
 xz = "1.10"
+commonsCompress = "1.27.1"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -27,6 +28,7 @@ lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel
 lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 xz = { module = "org.tukaani:xz", version.ref = "xz" }
+commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commonsCompress" }
 junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]

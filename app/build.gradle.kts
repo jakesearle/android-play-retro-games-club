@@ -56,6 +56,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.jsoup)
     implementation(libs.xz)
+    implementation(libs.commons.compress) // reading .7z ROMs
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)
