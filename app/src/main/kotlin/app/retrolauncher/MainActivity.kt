@@ -107,7 +107,7 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Debug builds only: add test picks from adb, e.g.
-     * `adb shell am start -n app.retrolauncher/.MainActivity --es debug_pick "Castlevania: Symphony of the Night (PS1)|https://retroachievements.org/game/11240"`,
+     * `adb shell am start -n garden.searle.prgc/app.retrolauncher.MainActivity --es debug_pick "Castlevania: Symphony of the Night (PS1)|https://retroachievements.org/game/11240"`,
      * optionally with "|Event label" at the end to pose as that kind of pick (a special, say),
      * or remove them with `--ez debug_clear_picks true`. Release builds ignore these extras.
      */

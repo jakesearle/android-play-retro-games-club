@@ -12,7 +12,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "app.retrolauncher"
+        applicationId = "garden.searle.prgc"
         minSdk = 26 // Android 8.0; Retroid Pocket 5 runs Android 13 (API 33)
         targetSdk = 36
         versionCode = 1

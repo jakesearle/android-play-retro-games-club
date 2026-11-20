@@ -59,8 +59,6 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   wrong one, so it's on hold until we decide on ScreenScraper.
 
 **Release basics**
-- **App icon**, final **app name**, and final **application ID**. `app.retrolauncher` is a
-  placeholder, and it can't change after people install without losing their settings.
 - **Signed release build** and a place for the APK (the repo is private), plus an in-app
   "new version available" check. Release builds are already shrunk with R8 and sign
   themselves once `keystore.properties` exists (see `keystore.properties.example`); what's
