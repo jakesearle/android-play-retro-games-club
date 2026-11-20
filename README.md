@@ -24,7 +24,9 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   Once a game has launched, its file is remembered.
 - **Launching** uses the open emulator catalogue published by
   [CocoonFE](https://github.com/KansoMirai/CocoonFE), downloaded and cached at
-  runtime, to build each emulator's launch intent.
+  runtime, to build each emulator's launch intent. When several are installed, the
+  default is the one [Joey's Retro Handhelds recommends](https://joeysretrohandhelds.com/guides/recommended-android-emulators/)
+  (a RetroArch core or a standalone app), unless you've chosen another.
 - **Your RetroAchievements progress** shows once you sign in (Settings ›
   RetroAchievements) with your username and Web API key, kept encrypted on the
   device. Counts are hardcore; softcore-only progress is marked. Beaten and
@@ -54,7 +56,6 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   password, has per-user quotas, and its terms allow it only in free apps (data under
   CC BY-NC-SA). Matching manuals by title instead (archive.org, Retro Game Manuals) risks the
   wrong one, so it's on hold until we decide on ScreenScraper.
-- **Preferred emulators.** Find which emulators Joey's Retro Handhelds recommends and prefer them.
 
 **Release basics**
 - **App icon**, final **app name**, and final **application ID**. `app.retrolauncher` is a

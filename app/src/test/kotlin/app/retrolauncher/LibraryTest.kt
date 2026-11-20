@@ -199,6 +199,20 @@ class ExtraPlayersTest {
     }
 
     @Test
+    fun `Joey's recommended emulator goes first, then the rest as listed`() {
+        val ra = "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n-e ROM {file.path}"
+        val c = app.retrolauncher.launch.ExtraPlayers.addTo(Catalogue.parse(
+            """{"format":1,"platforms":[{"id":"gba","name":"Game Boy Advance","players":[
+              {"id":"gba.pizza","name":"Pizza Boy A Pro","amStartArguments":${s("-n it.dbtecno.pizzaboygbapro/.Main")}},
+              {"id":"gba.ra.vba","name":"RetroArch (64 bits) - vba_next","amStartArguments":${s(ra)}},
+              {"id":"gba.ra.mgba","name":"RetroArch (64 bits) - mgba","amStartArguments":${s(ra)}}
+            ]}]}"""
+        ))
+        assertEquals(listOf("gba.ra.mgba", "gba.pizza", "gba.ra.vba"), c.platform("gba")!!.players.map { it.id })
+        assertEquals(listOf("com.retroarch.aarch64", "com.retroarch.ra32", "com.retroarch"), app.retrolauncher.launch.ExtraPlayers.preferredFor("gba"))
+    }
+
+    @Test
     fun `Joey64 launches with a content URI and a read grant`() {
         val cmd = app.retrolauncher.catalogue.am.AmStartArguments.parse(app.retrolauncher.launch.ExtraPlayers.JOEY64.amStartArguments)
         assertEquals(emptyList<String>(), cmd.warnings)
