@@ -32,6 +32,65 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
 - [Third-party notices](THIRD-PARTY-NOTICES.md): code ported from rcheevos and libchdr,
   and the libraries the app uses.
 
+## Roadmap
+
+### Before release (sharing on the club's Discord)
+
+**Features**
+- **Game manuals.** Link to the pick's manual, if a source can be matched reliably (check
+  whether RetroAchievements links manuals; else archive.org or Retro Game Manuals).
+- **RetroAchievements progress.** Show your completion for each pick, and the next achievement
+  towards beating it. Needs an RA username and web API key, so a sign-in step. Can show whether
+  unlocks were hardcore; can't check that the emulator itself has hardcore switched on.
+- **Previous picks.** Browse the club's earlier games.
+- **Preferred emulators.** Find which emulators Joey's Retro Handhelds recommends and prefer them.
+- **First-run setup.** Pick a ROM folder, grant all-files access (explained), and a note that
+  RetroArch needs its own file access. Today a new user just sees four "Missing ROM" cards.
+- **"Get emulator" help.** When no emulator is installed for a pick, link to a recommended one
+  (Obtainium pack, Play Store or GitHub) instead of only naming it.
+
+**Release basics**
+- **App icon**, final **app name**, and final **application ID**. `app.retrolauncher` is a
+  placeholder, and it can't change after people install without losing their settings.
+- **Signed release build** and a place for the APK (the repo is private), plus an in-app
+  "new version available" check.
+- **Licences in the app.** Settings › About with the version and third-party notices: the
+  libchdr port's BSD licence requires its notice to ship with the app, not only the repo.
+- **Testing beyond the Retroid Pocket 5:** 4:3 and near-square screens, small 3.5-4" displays,
+  Android 10-15, and handhelds with A/B swapped.
+- **A heads-up to Joey's Retro Handhelds** that the app reads the club page (and maybe ask
+  for a small JSON feed, which wouldn't break when the site is redesigned).
+
+**ROM matching**
+- **`.7z` ROMs.** Only `.zip` is opened today, so 7z files never match (Apache Commons
+  Compress can read 7z).
+- **More disc consoles.** Prioritise the ones in the club's history (Saturn, Dreamcast,
+  Sega CD, PS2 DVD images as CHD…).
+- **Progress during the first scan,** with a way to cancel: it reads every ROM for a console.
+
+**Nice to have**
+- **Share logs** from Settings for bug reports (Discord users can't run adb).
+- **A countdown** on the home screen ("New Game of the Week in 2 days").
+- **Links to the club's Discord and leaderboard** from Settings.
+- **A privacy line:** the app sends no analytics.
+
+## Later
+
+Ideas we've looked into and set aside for now.
+
+- **Start from the auto save state (Resume).** Like the NextUI Pak's X, offer to carry on
+  from where you quit. It depends on the emulator:
+  - **Joey64** only loads a state when its own library asks: that extra
+    (`com.joeysretro.joey64.LOAD_STATE`) is accepted only through its non-exported
+    `.GameStart` alias, and its "Continue on Play" setting (Settings › Saves) is applied by its
+    library, so games other apps start always begin from power-on. This needs a change in
+    Joey64 first, for example applying "Continue on Play" to games other apps start, or a
+    public extra for the auto state only. Then the club app can pass it.
+  - **DuckStation** takes a `resumeState` boolean extra; the catalogue's entry passes
+    `false`, so a Resume button could pass `true`.
+  - **RetroArch** has no per-launch option, but its own *Settings › Saving › Auto Load State*
+    applies to every launch, including from this app.
+
 ## Out of scope
 
 - **Being a Home app (launcher replacement).** This app opens from the app
