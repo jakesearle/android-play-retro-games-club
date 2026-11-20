@@ -39,6 +39,13 @@ import app.retrolauncher.library.LibraryScanner
 import app.retrolauncher.library.RomFiles
 import app.retrolauncher.library.RomSource
 import app.retrolauncher.library.SafPaths
+import app.retrolauncher.ra.RaAccount
+import app.retrolauncher.ra.RaAccountStore
+import app.retrolauncher.ra.RaAuthException
+import app.retrolauncher.ra.RaGame
+import app.retrolauncher.ra.RaProgress
+import app.retrolauncher.ra.RaRepository
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,9 +91,41 @@ data class ClubState(
     val past: List<PickRow> = emptyList(),
     /** How the past-picks page sorts and filters. */
     val pastFilter: PastFilter = PastFilter(),
+    val ra: RaState = RaState(),
+    /** Your own marks (DNF, completed elsewhere), by RA game ID. */
+    val marks: Map<Int, PickMark> = emptyMap(),
+    /** A chosen file that doesn't match; the home screen asks what to do with it. */
+    val unrecognized: UnrecognizedChoice? = null,
+)
+
+/** RetroAchievements: who's signed in, and what the Web API has said. */
+data class RaState(
+    /** The signed-in username, or null when not signed in. */
+    val user: String? = null,
+    /** Your progress by RA game ID; games you've never played aren't in it. */
+    val progress: Map<Int, RaProgress> = emptyMap(),
+    /** Player counts by RA game ID, for the Most popular sort. */
+    val players: Map<Int, Int> = emptyMap(),
+    /** Game details by RA game ID, loaded as game views open. */
+    val games: Map<Int, RaGame> = emptyMap(),
+    /** Player counts are being fetched for History. */
+    val loadingPlayers: Boolean = false,
+    /** RA refused the stored key (changed or revoked). */
+    val keyRefused: Boolean = false,
 )
 
 enum class ChoiceScope { GAME, PLATFORM }
+
+/** What came of choosing a ROM file by hand. */
+sealed interface ChooseOutcome {
+    data object Linked : ChooseOutcome
+    data class Problem(val message: String) : ChooseOutcome
+    /** RetroAchievements doesn't recognise the file; [ClubState.unrecognized] asks whether to use it anyway. */
+    data object Ask : ChooseOutcome
+}
+
+/** A chosen file RetroAchievements doesn't recognise, waiting for "Use anyway" or another choice. */
+data class UnrecognizedChoice(val row: PickRow, val uri: Uri, val fileName: String)
 
 /**
  * The club's current picks, matched against the user's ROMs the way the NextUI Pak does: by
@@ -103,6 +142,10 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     private val hashLibrary = HashLibrary(File(app.filesDir, "hashlib"))
     private val emulatorPack = EmulatorPackRepository(File(app.filesDir, "pack"), HashLibrary::httpGet)
     private val links = RomLinks(File(app.filesDir, "links.json"))
+    private val raAccounts = RaAccountStore(app)
+    private val raRepo = RaRepository(File(app.filesDir, "ra"))
+    private var raAccount: RaAccount? = raAccounts.load()
+    private var raPlayersJob: Job? = null
     private val finder = ClubFinder(
         hashLibrary = hashLibrary,
         hashCache = HashCache(File(app.filesDir, "hashes.tsv")),
@@ -132,6 +175,8 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
             linkCount = links.count(),
             showSetup = shouldShowSetup(settings.setupDone, settings.sources.isNotEmpty()),
             pastFilter = PastFilter.decode(settings.pastFilter),
+            marks = loadMarks(),
+            ra = RaState(user = raAccount?.user, progress = if (raAccount != null) raRepo.cachedProgress() else emptyMap()),
         )
     )
     val state: StateFlow<ClubState> = _state
@@ -405,27 +450,62 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
      * The player picked a ROM file by hand. For consoles that can be hashed it must be a
      * version RA recognises; disc-based consoles are trusted. Returns an error message or null.
      */
-    suspend fun chooseFile(row: PickRow, uri: Uri): String? = withContext(Dispatchers.IO) {
-        val catalogue = _state.value.catalogue ?: return@withContext "The emulator catalogue isn't loaded yet."
-        val console = row.pick.console ?: return@withContext "Can't tell which console this game is for."
+    suspend fun chooseFile(row: PickRow, uri: Uri): ChooseOutcome = withContext(Dispatchers.IO) {
+        fun problem(message: String) = ChooseOutcome.Problem(message)
+        val catalogue = _state.value.catalogue ?: return@withContext problem("The emulator catalogue isn't loaded yet.")
+        val console = row.pick.console ?: return@withContext problem("Can't tell which console this game is for.")
         val platform = platformFor(catalogue, console.id)
-            ?: return@withContext "No emulator platform is known for ${console.name}."
-        val game = romFiles.gameForDocument(uri, platform.id) ?: return@withContext "Couldn't read that file."
+            ?: return@withContext problem("No emulator platform is known for ${console.name}.")
+        val game = romFiles.gameForDocument(uri, platform.id) ?: return@withContext problem("Couldn't read that file.")
 
-        val file = romFiles.open(game) ?: return@withContext "Couldn't read that file."
+        val file = romFiles.open(game) ?: return@withContext problem("Couldn't read that file.")
         when (val verdict = ClubFinder.verifyChosen(hashLibrary, console, row.pick.gameId, file)) {
             ClubFinder.Verdict.Recognized, ClubFinder.Verdict.NotCheckable -> Unit
-            ClubFinder.Verdict.NotRecognized ->
-                return@withContext "That file isn't a version RetroAchievements recognizes for ${row.pick.displayTitle}."
+            // It may still play (another region, a revision…), just without achievements: ask.
+            ClubFinder.Verdict.NotRecognized -> {
+                _state.update { it.copy(unrecognized = UnrecognizedChoice(row, uri, game.fileName)) }
+                return@withContext ChooseOutcome.Ask
+            }
             ClubFinder.Verdict.NoHashList ->
-                return@withContext "Couldn't check that file: RetroAchievements' list of ${console.name} ROMs " +
-                    "hasn't been downloaded. Connect to Wi-Fi and try again."
-            is ClubFinder.Verdict.Unreadable -> return@withContext "Couldn't read that file: ${verdict.reason}"
+                return@withContext problem(
+                    "Couldn't check that file: RetroAchievements' list of ${console.name} ROMs " +
+                        "hasn't been downloaded. Connect to Wi-Fi and try again."
+                )
+            is ClubFinder.Verdict.Unreadable -> return@withContext problem("Couldn't read that file: ${verdict.reason}")
         }
-        links.save(row.pick.gameId, game)
+        link(row, game, catalogue, unverified = false)
+        ChooseOutcome.Linked
+    }
+
+    /** Links the unrecognised file anyway: it plays, but RetroAchievements won't count it. */
+    fun useUnrecognizedAnyway(done: (String) -> Unit) {
+        val choice = _state.value.unrecognized ?: return
+        _state.update { it.copy(unrecognized = null) }
+        viewModelScope.launch {
+            val message = withContext(Dispatchers.IO) {
+                val catalogue = _state.value.catalogue ?: return@withContext "The emulator catalogue isn't loaded yet."
+                val platform = choice.row.pick.console?.let { platformFor(catalogue, it.id) }
+                    ?: return@withContext "No emulator platform is known for this game."
+                val game = romFiles.gameForDocument(choice.uri, platform.id) ?: return@withContext "Couldn't read that file."
+                link(choice.row, game, catalogue, unverified = true)
+                "${choice.row.pick.displayTitle} will play from ${game.fileName}, without achievements."
+            }
+            done(message)
+        }
+    }
+
+    fun dismissUnrecognized() = _state.update { it.copy(unrecognized = null) }
+
+    private fun link(row: PickRow, game: Game, catalogue: Catalogue, unverified: Boolean) {
+        links.save(row.pick.gameId, game, unverified)
         val updated = found(catalogue, row.pick, game)
         _state.update { s -> s.withRow(row.pick, updated).copy(linkCount = links.count()) }
-        null
+    }
+
+    /** The pick plays from a file RetroAchievements doesn't recognise, so achievements won't unlock. */
+    fun playsWithoutAchievements(row: PickRow): Boolean {
+        val link = links.get(row.pick.gameId) ?: return false
+        return link.unverified && row.game?.key == link.key
     }
 
     // ── First-run setup ──────────────────────────────────────────────────────
@@ -545,6 +625,123 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         if (changed) checkPicks() else refreshEmulators()
         // The club may have moved on (a new week at midnight UTC) while the launcher stayed open.
         recheckClub()
+        // Back from a game: achievements may have unlocked.
+        refreshRa()
+    }
+
+    // ── Marks ────────────────────────────────────────────────────────────────
+
+    private fun loadMarks(): Map<Int, PickMark> = settings.marks().mapNotNull { (id, name) ->
+        PickMark.entries.firstOrNull { it.name == name }?.let { id to it }
+    }.toMap()
+
+    /** Sets or clears ([mark] null) your own mark on a game, by its RA game ID. */
+    fun setMark(gameId: Int, mark: PickMark?) {
+        if (gameId <= 0) return
+        settings.setMark(gameId, mark?.name)
+        _state.update { it.copy(marks = loadMarks()) }
+    }
+
+    // ── RetroAchievements ────────────────────────────────────────────────────
+
+    /** Fetches your progress if the cached copy is older than [maxAgeMs]. Offline, the cache stays. */
+    fun refreshRa(maxAgeMs: Long = RaRepository.PROGRESS_MAX_AGE_MS) {
+        val account = raAccount ?: return
+        if (!raRepo.progressStale(maxAgeMs)) return
+        viewModelScope.launch {
+            try {
+                val progress = withContext(Dispatchers.IO) { raRepo.fetchProgress(account) }
+                _state.update { it.copy(ra = it.ra.copy(progress = progress, keyRefused = false)) }
+            } catch (_: RaAuthException) {
+                _state.update { it.copy(ra = it.ra.copy(keyRefused = true)) }
+            } catch (_: Exception) {
+                // Offline: keep showing the cached progress.
+            }
+        }
+    }
+
+    /**
+     * Signs in: checks the username and key by fetching your progress, and keeps them only if
+     * RetroAchievements accepts them. [done] gets null on success, else what went wrong.
+     */
+    fun raSignIn(user: String, key: String, done: (String?) -> Unit) {
+        val account = RaAccount(user.trim(), key.trim())
+        if (account.user.isEmpty() || account.key.isEmpty()) return done("Enter your username and Web API key.")
+        viewModelScope.launch {
+            val error = try {
+                withContext(Dispatchers.IO) { raRepo.clear(); raRepo.fetchProgress(account) }.let { progress ->
+                    withContext(Dispatchers.IO) { raAccounts.save(account) }
+                    raAccount = account
+                    _state.update { it.copy(ra = RaState(user = account.user, progress = progress)) }
+                }
+                null
+            } catch (_: RaAuthException) {
+                "RetroAchievements didn't accept that username and key. Check both, then try again."
+            } catch (_: Exception) {
+                "Couldn't reach RetroAchievements. Check the Wi-Fi, then try again."
+            }
+            done(error)
+        }
+    }
+
+    fun raSignOut() {
+        raPlayersJob?.cancel()
+        raAccount = null
+        raAccounts.clear()
+        viewModelScope.launch(Dispatchers.IO) { raRepo.clear() }
+        _state.update { it.copy(ra = RaState()) }
+    }
+
+    /** Loads a game's achievements and your progress for its game view. */
+    fun loadRaGame(gameId: Int) {
+        val account = raAccount ?: return
+        if (gameId <= 0) return
+        viewModelScope.launch {
+            val game = try {
+                withContext(Dispatchers.IO) { raRepo.game(account, gameId) }
+            } catch (_: RaAuthException) {
+                _state.update { it.copy(ra = it.ra.copy(keyRefused = true)) }
+                null
+            } ?: return@launch
+            _state.update { s ->
+                s.copy(ra = s.ra.copy(
+                    games = s.ra.games + (gameId to game),
+                    players = s.ra.players + (gameId to game.players),
+                    // The game's own answer is the freshest progress for it.
+                    progress = if (game.progress.started) s.ra.progress + (gameId to game.progress) else s.ra.progress,
+                ))
+            }
+        }
+    }
+
+    /**
+     * Player counts for [gameIds], for History's Most popular sort: from the cache when recent,
+     * else one request at a time, with a pause between them to go easy on RetroAchievements.
+     */
+    fun loadPlayers(gameIds: Collection<Int>) {
+        val account = raAccount ?: return
+        if (raPlayersJob?.isActive == true) return
+        raPlayersJob = viewModelScope.launch {
+            val todo = gameIds.filter { it > 0 && it !in _state.value.ra.players }.distinct()
+            if (todo.isEmpty()) return@launch
+            _state.update { it.copy(ra = it.ra.copy(loadingPlayers = true)) }
+            try {
+                for (id in todo) {
+                    if (!isActive) break
+                    val cached = withContext(Dispatchers.IO) { raRepo.cachedPlayers(id) }
+                    val players = cached ?: try {
+                        withContext(Dispatchers.IO) { raRepo.game(account, id, RaRepository.PLAYERS_MAX_AGE_MS) }?.players
+                            .also { delay(250) }
+                    } catch (_: RaAuthException) {
+                        _state.update { it.copy(ra = it.ra.copy(keyRefused = true)) }
+                        break
+                    } ?: continue
+                    _state.update { it.copy(ra = it.ra.copy(players = it.ra.players + (id to players))) }
+                }
+            } finally {
+                _state.update { it.copy(ra = it.ra.copy(loadingPlayers = false)) }
+            }
+        }
     }
 
     fun addSource(source: RomSource) {

@@ -22,6 +22,13 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
 - **Launching** uses the open emulator catalogue published by
   [CocoonFE](https://github.com/KansoMirai/CocoonFE), downloaded and cached at
   runtime, to build each emulator's launch intent.
+- **Your RetroAchievements progress** shows once you sign in (Settings ›
+  RetroAchievements) with your username and Web API key, kept encrypted on the
+  device. Counts are hardcore; softcore-only progress is marked. Beaten and
+  mastered games get a trophy on their card.
+- **Your own marks** cover what RetroAchievements can't know: mark a game
+  *Completed somewhere else* (counts as beaten) or *Did not finish* from its
+  game view. A beaten or mastered award on RetroAchievements takes precedence.
 
 ## Reference
 
@@ -39,10 +46,8 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
 **Features**
 - **Game manuals.** Link to the pick's manual, if a source can be matched reliably (check
   whether RetroAchievements links manuals; else archive.org or Retro Game Manuals).
-- **RetroAchievements progress.** Show your completion for each pick, and the next achievement
-  towards beating it. Needs an RA username and web API key, so a sign-in step. Can show whether
-  unlocks were hardcore; can't check that the emulator itself has hardcore switched on.
-- **Previous picks.** Browse the club's earlier games.
+- **RetroAchievements in first-run setup.** Signing in (username and Web API key) is in
+  Settings › RetroAchievements; offer it as an optional setup step too.
 - **Preferred emulators.** Find which emulators Joey's Retro Handhelds recommends and prefer them.
 
 **Release basics**
@@ -50,6 +55,10 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   placeholder, and it can't change after people install without losing their settings.
 - **Signed release build** and a place for the APK (the repo is private), plus an in-app
   "new version available" check.
+- **"Add to Obtainium" button** at the top of this README, using Obtainium's badge and its
+  `obtainium://add/<repo URL>` link (through Obtainium's web redirect, since GitHub won't
+  link a custom scheme). Needs the repo public and the APK attached to GitHub releases, so
+  Obtainium can see new versions.
 - **Licences in the app.** Settings › About with the version and third-party notices: the
   libchdr port's BSD licence requires its notice to ship with the app, not only the repo.
 - **Testing beyond the Retroid Pocket 5:** 4:3 and near-square screens, small 3.5-4" displays,
@@ -92,6 +101,12 @@ Ideas we've looked into and set aside for now.
 - **Being a Home app (launcher replacement).** This app opens from the app
   drawer like any other app. It won't register as a Home app or try to replace
   the device's launcher, and that isn't planned.
+- **Copying RetroAchievements' own screens.** No achievement lists, badges,
+  leaderboards or profile pages. The game view already links to each game's
+  RetroAchievements page, and RetroArch shows achievements in-game. The app uses
+  RetroAchievements only for what helps with the club's picks: a trophy for
+  beaten and mastered games, a one-line progress summary, the next achievement
+  towards beating the game, and History's progress filter and popularity sort.
 
 ## Development
 

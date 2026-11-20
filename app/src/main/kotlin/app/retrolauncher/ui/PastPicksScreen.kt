@@ -45,6 +45,9 @@ const val PAST_BATCH = 10
 @Composable
 fun PastPicksScreen(
     past: List<PickRow>,
+    ra: RaState,
+    marks: Map<Int, PickMark>,
+    onLoadPlayers: (List<Int>) -> Unit,
     filter: PastFilter,
     onFilter: (PastFilter) -> Unit,
     shown: Int,
@@ -57,7 +60,14 @@ fun PastPicksScreen(
     onPlay: (PickRow) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val rows = remember(past, filter) { applyPastFilter(past, filter) }
+    // Signed out, sorting by popularity and filtering by completion aren't available.
+    val signedIn = ra.user != null
+    val shownFilter = filter.available(signedIn, marks.isNotEmpty())
+    val rows = remember(past, filter, ra, marks) { historyRows(past, filter, ra, marks) }
+    // Most popular needs every past pick's player count; they load in the background.
+    LaunchedEffect(shownFilter.sort, past.size) {
+        if (shownFilter.sort == PastSort.MOST_POPULAR) onLoadPlayers(past.map { it.pick.gameId })
+    }
     val visible = rows.take(shown)
     val grid = rememberLazyGridState()
     val requesters = remember(visible.size) { List(visible.size) { FocusRequester() } }
@@ -96,10 +106,11 @@ fun PastPicksScreen(
     ) {
         val status = when {
             checking -> "Checking ROMs…"
-            filter.filtering -> "${rows.size} of ${past.size} picks"
+            shownFilter.sort == PastSort.MOST_POPULAR && ra.loadingPlayers -> "Loading player counts…"
+            shownFilter.filtering -> "${rows.size} of ${past.size} picks"
             else -> "${past.size} picks"
         }
-        Header(status, title = "History", onFilter = { filterOpen = true }, filtering = filter.filtering, onSurprise = ::surprise)
+        Header(status, title = "History", onFilter = { filterOpen = true }, filtering = shownFilter.filtering, onSurprise = ::surprise)
         if (rows.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text(
@@ -130,6 +141,7 @@ fun PastPicksScreen(
                             },
                         onOpen = { onOpen(row) },
                         onPlay = { onPlay(row) },
+                        completion = completionOf(ra.progress[row.pick.gameId], marks[row.pick.gameId]),
                     )
                 }
             }
@@ -157,6 +169,6 @@ fun PastPicksScreen(
         }
     }
 
-    if (filterOpen) PastFilterDialog(filter, past, onChange = onFilter, onDismiss = { filterOpen = false })
+    if (filterOpen) PastFilterDialog(shownFilter, past, signedIn, showProgress = signedIn || marks.isNotEmpty(), onChange = onFilter, onDismiss = { filterOpen = false })
 }
 

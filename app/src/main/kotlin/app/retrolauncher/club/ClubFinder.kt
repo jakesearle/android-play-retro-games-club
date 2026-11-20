@@ -130,6 +130,8 @@ class RomLinks(private val file: File) {
         val uri: String? = null,
         val size: Long = 0,
         val lastModified: Long = 0,
+        /** Picked by hand although RetroAchievements doesn't recognise it ("Use anyway"). */
+        val unverified: Boolean = false,
     ) {
         fun toGame() = Game(key, platformId, fileName, app.retrolauncher.library.GameTitles.clean(fileName), path, uri, size, lastModified)
     }
@@ -148,8 +150,8 @@ class RomLinks(private val file: File) {
     fun get(gameId: Int): Link? = all()[gameId.toString()]
 
     @Synchronized
-    fun save(gameId: Int, game: Game) {
-        all()[gameId.toString()] = Link(game.key, game.platformId, game.fileName, game.path, game.uri, game.size, game.lastModified)
+    fun save(gameId: Int, game: Game, unverified: Boolean = false) {
+        all()[gameId.toString()] = Link(game.key, game.platformId, game.fileName, game.path, game.uri, game.size, game.lastModified, unverified)
         write()
     }
 

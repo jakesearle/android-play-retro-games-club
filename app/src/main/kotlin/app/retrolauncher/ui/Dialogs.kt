@@ -96,7 +96,7 @@ internal fun PadDialog(
 }
 
 @Composable
-private fun RowText(text: String, focused: Boolean, detail: String? = null, enabled: Boolean = true) {
+internal fun RowText(text: String, focused: Boolean, detail: String? = null, enabled: Boolean = true) {
     val base = if (focused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
     val color = if (enabled) base else base.copy(alpha = 0.5f)
     Column {
@@ -106,7 +106,7 @@ private fun RowText(text: String, focused: Boolean, detail: String? = null, enab
 }
 
 @Composable
-private fun Message(text: String) {
+internal fun Message(text: String) {
     Text(text, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
 }
 
@@ -189,6 +189,7 @@ fun MenuDialog(
     onAddFolder: () -> Unit,
     onOpenFolder: (RomSource) -> Unit,
     onRequestAllFiles: () -> Unit,
+    onRetroAchievements: () -> Unit,
     showMessage: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -201,6 +202,20 @@ fun MenuDialog(
             item {
                 FocusRow(onClick = { vm.refresh(); onDismiss() }, modifier = Modifier.focusRequester(first)) { f ->
                     RowText("Refresh games", f, "Asks the club's site for its current picks and searches again.")
+                }
+            }
+            item {
+                FocusRow(onClick = onRetroAchievements) { f ->
+                    val ra = state.ra
+                    RowText(
+                        "RetroAchievements…",
+                        f,
+                        when {
+                            ra.user == null -> "Sign in to see your progress on each pick."
+                            ra.keyRefused -> "Signed in as ${ra.user}, but the key was refused. Sign in again."
+                            else -> "Signed in as ${ra.user}."
+                        },
+                    )
                 }
             }
             // Open a ROM folder in the file manager: one row, or one per folder when there are several.
@@ -340,6 +355,59 @@ fun HelpDialog(topics: List<HelpTopic>, onDismiss: () -> Unit) {
             Message(topic.answer)
             FocusRow(onClick = { open = null }, modifier = Modifier.focusRequester(back)) { f -> RowText("Back to questions", f) }
             LaunchedEffect(topic) { runCatching { back.requestFocus() } }
+        }
+    }
+}
+
+/** Your own mark on a game: completed somewhere else, did not finish, or none. */
+@Composable
+fun MarkDialog(title: String, current: PickMark?, onMark: (PickMark?) -> Unit, onDismiss: () -> Unit) {
+    val first = rememberFirstFocus()
+    PadDialog(title = "Mark $title", onDismiss = onDismiss, focus = first, wide = true) {
+        LazyColumn(Modifier.weight(1f, fill = false)) {
+            PickMark.entries.forEachIndexed { i, mark ->
+                item {
+                    FocusRow(onClick = { onMark(mark) }, selected = current == mark, modifier = if (i == 0) Modifier.focusRequester(first) else Modifier) { f ->
+                        RowText(mark.label, f, mark.detail)
+                    }
+                }
+            }
+            item {
+                FocusRow(onClick = { onMark(null) }, selected = current == null) { f ->
+                    RowText("No mark", f, "RetroAchievements decides, if you're signed in.")
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A file chosen by hand that RetroAchievements doesn't recognise for the pick. It may still
+ * play (another region, a revision, a patched copy), just without achievements, so offer that,
+ * after choosing another file (the usual fix) and before cancelling.
+ */
+@Composable
+fun UnrecognizedFileDialog(choice: UnrecognizedChoice, onChooseAnother: () -> Unit, onUseAnyway: () -> Unit, onDismiss: () -> Unit) {
+    val first = rememberFirstFocus()
+    PadDialog(title = "Not a recognized version", onDismiss = onDismiss, focus = first, wide = true) {
+        Message(
+            "${choice.fileName} isn't a version RetroAchievements recognizes for ${choice.row.pick.displayTitle}. " +
+                "It may still play, but achievements won't unlock and it won't count for the club."
+        )
+        LazyColumn(Modifier.weight(1f, fill = false)) {
+            item {
+                FocusRow(onClick = onChooseAnother, modifier = Modifier.focusRequester(first)) { f ->
+                    RowText("Choose another file…", f, "The game's RetroAchievements page lists the versions it supports.")
+                }
+            }
+            item {
+                FocusRow(onClick = onUseAnyway) { f ->
+                    RowText("Use anyway (no achievements)", f, "Plays this file. Settings › Unlink ROM files undoes it.")
+                }
+            }
+            item {
+                FocusRow(onClick = onDismiss) { f -> RowText("Cancel", f) }
+            }
         }
     }
 }

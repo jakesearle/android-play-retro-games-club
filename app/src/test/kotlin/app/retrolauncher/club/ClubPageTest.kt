@@ -412,3 +412,18 @@ class PastFilterSaveAndSurpriseTest {
         assertNull(app.retrolauncher.ui.surprisePick(emptyList()))
     }
 }
+
+class RomLinksUnverifiedTest {
+    @get:Rule val tmp = TemporaryFolder()
+
+    @Test
+    fun `a file used anyway stays marked unverified after reloading`() {
+        val file = java.io.File(tmp.root, "links.json")
+        val game = app.retrolauncher.library.Game("k1", "snes", "Game (Europe).sfc", "Game", "/roms/Game (Europe).sfc", null, 10, 20)
+        RomLinks(file).save(42, game, unverified = true)
+        RomLinks(file).save(7, game.copy(key = "k2"))
+        val reloaded = RomLinks(file)
+        assertTrue(reloaded.get(42)!!.unverified)
+        assertFalse(reloaded.get(7)!!.unverified)
+    }
+}

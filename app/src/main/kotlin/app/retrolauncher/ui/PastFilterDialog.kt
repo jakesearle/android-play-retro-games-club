@@ -43,7 +43,7 @@ import androidx.compose.ui.unit.sp
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun PastFilterDialog(filter: PastFilter, past: List<PickRow>, onChange: (PastFilter) -> Unit, onDismiss: () -> Unit) {
+fun PastFilterDialog(filter: PastFilter, past: List<PickRow>, signedIn: Boolean, showProgress: Boolean, onChange: (PastFilter) -> Unit, onDismiss: () -> Unit) {
     val first = rememberFirstFocus()
     val consoles = remember(past) { pastConsoles(past) }
     PadDialog(
@@ -66,7 +66,8 @@ fun PastFilterDialog(filter: PastFilter, past: List<PickRow>, onChange: (PastFil
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Option("Sort") {
-                PastSort.entries.forEachIndexed { i, sort ->
+                // Most popular needs RetroAchievements' player counts, so it's there once signed in.
+                PastSort.entries.filter { signedIn || it != PastSort.MOST_POPULAR }.forEachIndexed { i, sort ->
                     Chip(sort.label, filter.sort == sort, if (i == 0) Modifier.focusRequester(first) else Modifier) {
                         onChange(filter.copy(sort = sort))
                     }
@@ -81,6 +82,14 @@ fun PastFilterDialog(filter: PastFilter, past: List<PickRow>, onChange: (PastFil
             Option("ROM") {
                 RomFilter.entries.forEach { rom ->
                     Chip(rom.label, filter.rom == rom) { onChange(filter.copy(rom = rom)) }
+                }
+            }
+            // From RetroAchievements and your own marks, so it shows once either exists.
+            if (showProgress) {
+                Option("Progress") {
+                    CompletionFilter.entries.forEach { c ->
+                        Chip(c.label, filter.completion == c) { onChange(filter.copy(completion = c)) }
+                    }
                 }
             }
             Option("Console") {

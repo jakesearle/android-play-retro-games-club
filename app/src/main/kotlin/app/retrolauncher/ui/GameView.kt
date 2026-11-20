@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -76,6 +77,12 @@ private data class Action(val label: String, val icon: ImageVector, val primary:
 fun GameView(
     row: PickRow,
     vm: ClubViewModel,
+    ra: RaState,
+    /** Your own mark on this game, if any. */
+    mark: PickMark?,
+    /** L1/R1: the previous or next game in the list the game view was opened from. */
+    onPrevious: (() -> Unit)?,
+    onNext: (() -> Unit)?,
     revision: Int,
     hasSources: Boolean,
     onBack: () -> Unit,
@@ -88,8 +95,13 @@ fun GameView(
     modifier: Modifier = Modifier,
 ) {
     val pick = row.pick
+    // Signed in: this game's achievements and your progress, for the summary and "next" line.
+    LaunchedEffect(pick.gameId, ra.user) { vm.loadRaGame(pick.gameId) }
+    val raGame = ra.games[pick.gameId]
+    val raProgress = raGame?.progress ?: ra.progress[pick.gameId]
     val art by rememberBoxArt(pick.imageUrl)
     var pickerOpen by remember { mutableStateOf(false) }
+    var markOpen by remember { mutableStateOf(false) }
     var copiesOpen by remember { mutableStateOf(false) }
     var getEmulatorOpen by remember { mutableStateOf(false) }
     var helpOpen by remember { mutableStateOf(false) }
@@ -115,6 +127,7 @@ fun GameView(
         }
         if (pick.raUrl.isNotEmpty()) add(Action("RetroAchievements", Icons.Filled.Star) { onOpenUrl(pick.raUrl) })
         if (pick.guideUrl.isNotEmpty()) add(Action("Guide", Icons.Filled.Info) { onOpenUrl(pick.guideUrl) })
+        if (pick.gameId > 0) add(Action("Mark as…", Icons.Filled.Edit) { markOpen = true })
     }
     val firstButton = remember { FocusRequester() }
 
@@ -126,6 +139,8 @@ fun GameView(
                 when (pad) {
                     Pad.X -> { onPlay(); true }
                     Pad.B -> { onBack(); true }
+                    Pad.L1 -> onPrevious?.let { it(); true } ?: false
+                    Pad.R1 -> onNext?.let { it(); true } ?: false
                     else -> false
                 }
             },
@@ -173,6 +188,14 @@ fun GameView(
                         }
                     }
                 }
+                if (ra.user != null) {
+                    Spacer(Modifier.height(6.dp))
+                    RaSummary(raProgress, raGame?.players ?: ra.players[pick.gameId], loaded = raGame != null)
+                }
+                if (mark != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("Marked: ${mark.label}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
+                }
                 Spacer(Modifier.height(12.dp))
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -191,10 +214,15 @@ fun GameView(
                 }
                 Spacer(Modifier.height(10.dp))
                 // The game's summary, then which file and emulator it uses (or what's missing).
-                Description(pick.description, statusLine(row, vm, revision, hasSources), Modifier.weight(1f))
+                Description(
+                    pick.description,
+                    statusLine(row, vm, revision, hasSources),
+                    Modifier.weight(1f),
+                    next = raGame?.nextToBeat()?.let { "Next towards beating it: ${it.title}. ${it.description}".trim() },
+                )
             }
         }
-        Footer {
+        Footer(start = { if (onPrevious != null || onNext != null) PadHint("L1/R1", "Previous/next") }) {
             PadHint("X", "Play")
             PadHint("B", "Back")
             PadHint("A", "Select")
@@ -207,6 +235,7 @@ fun GameView(
 
     if (pickerOpen) row.game?.let { game -> EmulatorPicker(vm, game, pick.displayTitle, onDismiss = { pickerOpen = false }) }
     if (helpOpen) HelpDialog(help, onDismiss = { helpOpen = false })
+    if (markOpen) MarkDialog(pick.displayTitle, mark, onMark = { vm.setMark(pick.gameId, it); markOpen = false }, onDismiss = { markOpen = false })
     if (getEmulatorOpen) GetEmulatorDialog(vm, row, onOpenLink, onDismiss = { getEmulatorOpen = false })
     if (copiesOpen) {
         ChooseCopyDialog(row, onChoose = { game -> copiesOpen = false; vm.chooseCopy(row, game)?.let(showMessage) }, onDismiss = { copiesOpen = false })
@@ -244,14 +273,45 @@ private fun statusLine(row: PickRow, vm: ClubViewModel, @Suppress("UNUSED_PARAME
                 ChoiceScope.PLATFORM -> " (${vm.platformName(game)} default)"
                 null -> ""
             }
-            "${game.fileName}\n" + (player?.let { "Plays in ${it.name}$via" } ?: "No emulator installed")
+            "${game.fileName}\n" + (player?.let { "Plays in ${it.name}$via" } ?: "No emulator installed") + noAchievements(row, vm)
         }
-        PickState.NO_EMULATOR -> "${row.game?.fileName.orEmpty()}\n${row.message.orEmpty()}"
+        PickState.NO_EMULATOR -> "${row.game?.fileName.orEmpty()}\n${row.message.orEmpty()}" + noAchievements(row, vm)
         PickState.CHOOSE_COPY -> "${row.copies.size} copies match. Choose which to play; it's remembered."
         PickState.CHECKING -> "Looking for this game in your ROM folders…"
         PickState.MISSING, PickState.UNKNOWN ->
             (row.message ?: "Not found.") + if (!hasSources) "\nNo ROM folders added yet." else ""
     }
+
+/**
+ * Your RetroAchievements progress in the game view: unlocked count (hardcore, or softcore when
+ * that's all you have), your award, and how many people play the game on RetroAchievements.
+ */
+@Composable
+private fun RaSummary(progress: app.retrolauncher.ra.RaProgress?, players: Int?, loaded: Boolean) {
+    val dim = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+    val parts = buildList {
+        when {
+            progress != null && progress.total > 0 ->
+                add("${progress.shown} of ${progress.total} achievements" + if (progress.softcore) " (softcore)" else "")
+            progress != null || loaded -> add("Not started")
+            else -> add("Loading your progress…")
+        }
+        progress?.award?.let { add(it.label) }
+        players?.let { add("%,d players on RetroAchievements".format(it)) }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (progress?.beaten == true) {
+            val gold = progress.award == app.retrolauncher.ra.RaAward.MASTERED || progress.award == app.retrolauncher.ra.RaAward.COMPLETED
+            Icon(AppIcons.Trophy, contentDescription = null, tint = if (gold) Color(0xFFE8C15A) else dim, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(parts.joinToString(" · "), fontSize = 13.sp, color = dim)
+    }
+}
+
+/** A note when the file was used anyway, though RetroAchievements doesn't recognise it. */
+private fun noAchievements(row: PickRow, vm: ClubViewModel): String =
+    if (vm.playsWithoutAchievements(row)) "\nRetroAchievements doesn't recognize this version, so achievements won't unlock." else ""
 
 /** A game view button: an icon and a label. Play, the main action, is the largest. */
 @Composable
@@ -305,7 +365,7 @@ private fun GameStatus(state: PickState) {
  * buttons focuses it when it's long, then up/down scroll it.
  */
 @Composable
-private fun Description(summary: String, details: String, modifier: Modifier) {
+private fun Description(summary: String, details: String, modifier: Modifier, next: String? = null) {
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     var focused by remember { mutableStateOf(false) }
@@ -335,6 +395,10 @@ private fun Description(summary: String, details: String, modifier: Modifier) {
         Column {
             if (summary.isNotEmpty()) {
                 Text(summary, fontSize = 14.sp, lineHeight = 20.sp)
+                Spacer(Modifier.height(10.dp))
+            }
+            if (next != null) {
+                Text(next, fontSize = 14.sp, lineHeight = 20.sp)
                 Spacer(Modifier.height(10.dp))
             }
             Text(details, fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))

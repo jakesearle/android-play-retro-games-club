@@ -39,6 +39,16 @@ class Settings(context: Context) {
         get() = prefs.getString(PAST_FILTER, null)
         set(value) = prefs.edit { putString(PAST_FILTER, value) }
 
+    /** Your marks on games, by RA game ID: the mark's name ("DNF", "COMPLETED_ELSEWHERE"). */
+    fun marks(): Map<Int, String> = prefs.all.mapNotNull { (k, v) ->
+        if (!k.startsWith(MARK)) return@mapNotNull null
+        val id = k.removePrefix(MARK).toIntOrNull() ?: return@mapNotNull null
+        (v as? String)?.let { id to it }
+    }.toMap()
+
+    fun setMark(gameId: Int, mark: String?) =
+        prefs.edit { if (mark == null) remove("$MARK$gameId") else putString("$MARK$gameId", mark) }
+
     /** Debug builds only: extra test picks, as "title|RetroAchievements URL" lines. */
     var debugPicks: List<String>
         get() = prefs.getString(DEBUG_PICKS, null)?.lines()?.filter { it.isNotBlank() }.orEmpty()
@@ -49,5 +59,6 @@ class Settings(context: Context) {
         const val DEBUG_PICKS = "debug_picks"
         const val SETUP_DONE = "setup_done"
         const val PAST_FILTER = "past_filter"
+        const val MARK = "mark/"
     }
 }

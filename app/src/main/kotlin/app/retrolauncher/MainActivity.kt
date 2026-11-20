@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import app.retrolauncher.library.RomSource
 import app.retrolauncher.library.SafPaths
 import androidx.lifecycle.lifecycleScope
+import app.retrolauncher.ui.ChooseOutcome
 import app.retrolauncher.ui.ClubScreen
 import app.retrolauncher.ui.ClubViewModel
 import app.retrolauncher.ui.PickRow
@@ -50,8 +51,11 @@ class MainActivity : ComponentActivity() {
         // Keep access so the linked file can be launched after a reboot.
         runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         lifecycleScope.launch {
-            val error = vm.chooseFile(row, uri)
-            toast(error ?: "${row.pick.displayTitle} is ready to play.")
+            when (val outcome = vm.chooseFile(row, uri)) {
+                ChooseOutcome.Linked -> toast("${row.pick.displayTitle} is ready to play.")
+                is ChooseOutcome.Problem -> toast(outcome.message)
+                ChooseOutcome.Ask -> Unit // the home screen asks whether to use it anyway
+            }
         }
     }
 

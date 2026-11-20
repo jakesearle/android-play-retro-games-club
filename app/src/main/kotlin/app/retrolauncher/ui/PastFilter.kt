@@ -2,6 +2,7 @@ package app.retrolauncher.ui
 
 import app.retrolauncher.club.ClubPage
 import app.retrolauncher.club.ClubPick
+import app.retrolauncher.ra.RaProgress
 
 enum class PastSort(val label: String) {
     NEWEST("Newest first"),
@@ -10,10 +11,35 @@ enum class PastSort(val label: String) {
     MOST_BEATEN("Most beaten"),
     /** The fewest members beat it first: the club's hidden gems. */
     LEAST_BEATEN("Least beaten"),
+    /** Most RetroAchievements players first (signed in only). */
+    MOST_POPULAR("Most popular"),
     TITLE("Title A–Z"),
 }
 
 enum class RomFilter(val label: String) { ANY("Any"), HAVE("Have ROM"), MISSING("Missing ROM") }
+
+/** Where you are with a pick ([completionOf]: RetroAchievements plus your own marks). */
+enum class CompletionFilter(val label: String) {
+    ANY("Any"),
+    /** Not started or in progress: what's left to play. DNF games are left out. */
+    UNBEATEN("Unbeaten"),
+    NOT_STARTED("Not started"),
+    IN_PROGRESS("In progress"),
+    /** Beaten (on RetroAchievements or marked as completed elsewhere), but not mastered. */
+    BEATEN("Beaten"),
+    MASTERED("Mastered"),
+    DNF("DNF");
+
+    fun matches(c: Completion): Boolean = when (this) {
+        ANY -> true
+        UNBEATEN -> c == Completion.NOT_STARTED || c == Completion.IN_PROGRESS
+        NOT_STARTED -> c == Completion.NOT_STARTED
+        IN_PROGRESS -> c == Completion.IN_PROGRESS
+        BEATEN -> c == Completion.BEATEN
+        MASTERED -> c == Completion.MASTERED
+        DNF -> c == Completion.DNF
+    }
+}
 
 /** How the past-picks page sorts and filters. The default shows everything, newest first. */
 data class PastFilter(
@@ -22,8 +48,19 @@ data class PastFilter(
     val rom: RomFilter = RomFilter.ANY,
     /** Only this console's picks (an RA console ID), or null for all of them. */
     val console: Int? = null,
+    val completion: CompletionFilter = CompletionFilter.ANY,
 ) {
-    val filtering: Boolean get() = types.size < PickType.entries.size || rom != RomFilter.ANY || console != null
+    val filtering: Boolean get() =
+        types.size < PickType.entries.size || rom != RomFilter.ANY || console != null || completion != CompletionFilter.ANY
+
+    /**
+     * What applies given what's available: Most popular needs RetroAchievements, and the
+     * completion filter needs RetroAchievements or at least one mark of your own.
+     */
+    fun available(signedIn: Boolean, hasMarks: Boolean): PastFilter = copy(
+        sort = if (sort == PastSort.MOST_POPULAR && !signedIn) PastSort.NEWEST else sort,
+        completion = if (signedIn || hasMarks) completion else CompletionFilter.ANY,
+    )
 
     /** For saving: "sort=NEWEST;types=WEEK,MONTH;rom=ANY;console=3". */
     fun encode(): String = listOfNotNull(
@@ -31,6 +68,7 @@ data class PastFilter(
         "types=${types.sortedBy { it.ordinal }.joinToString(",") { it.name }}",
         "rom=${rom.name}",
         console?.let { "console=$it" },
+        "completion=${completion.name}",
     ).joinToString(";")
 
     companion object {
@@ -46,6 +84,7 @@ data class PastFilter(
                     ?.toSet()?.ifEmpty { null } ?: default.types,
                 rom = RomFilter.entries.firstOrNull { it.name == fields["rom"] } ?: default.rom,
                 console = fields["console"]?.toIntOrNull(),
+                completion = CompletionFilter.entries.firstOrNull { it.name == fields["completion"] } ?: default.completion,
             )
         }
     }
@@ -83,7 +122,6 @@ internal val PickRow.hasRom: Boolean
 internal fun surprisePick(rows: List<PickRow>, random: kotlin.random.Random = kotlin.random.Random.Default): PickRow? =
     rows.filter { it.state == PickState.READY }.ifEmpty { rows.filter { it.hasRom } }.ifEmpty { rows }.randomOrNull(random)
 
-/** No ROM matches the pick (or its console isn't supported). */
 /** How many club members beat the pick, from its "Beaten" stat; null if unknown. */
 internal val ClubPick.beaten: Int? get() = stats.firstOrNull { it.key == "Beaten" }?.value?.filter(Char::isDigit)?.toIntOrNull()
 
@@ -94,14 +132,28 @@ internal fun pastConsoles(past: List<PickRow>): List<Triple<Int, String, Int>> =
         .map { (console, count) -> Triple(console.id, console.name, count) }
         .sortedBy { it.second }
 
+/** No ROM matches the pick (or its console isn't supported). */
 internal val PickRow.missingRom: Boolean get() = state == PickState.MISSING || state == PickState.UNKNOWN
+
+/** History's list as it's shown: [filter] limited to what's [PastFilter.available], applied. */
+internal fun historyRows(past: List<PickRow>, filter: PastFilter, ra: RaState, marks: Map<Int, PickMark>): List<PickRow> =
+    applyPastFilter(past, filter.available(ra.user != null, marks.isNotEmpty()), ra.progress, ra.players, marks)
 
 /**
  * The past picks to show: all types merged and sorted by when they ran (on the same start date,
  * week before month before romhack before season), then filtered. While ROMs are still being
  * checked, a pick shows under neither ROM filter until its result is in.
  */
-internal fun applyPastFilter(past: List<PickRow>, filter: PastFilter): List<PickRow> {
+internal fun applyPastFilter(
+    past: List<PickRow>,
+    filter: PastFilter,
+    /** Your RetroAchievements progress by game ID, for the completion filter. */
+    progress: Map<Int, RaProgress> = emptyMap(),
+    /** RetroAchievements player counts by game ID, for the Most popular sort. */
+    players: Map<Int, Int> = emptyMap(),
+    /** Your own marks by game ID, for the completion filter. */
+    marks: Map<Int, PickMark> = emptyMap(),
+): List<PickRow> {
     val byDate = compareBy<PickRow, java.time.LocalDate?>(nullsFirst()) { ClubPage.periodStart(it.pick.period) }
         .thenByDescending { it.pick.type?.ordinal ?: Int.MAX_VALUE }
     val newest = byDate.reversed()
@@ -112,11 +164,14 @@ internal fun applyPastFilter(past: List<PickRow>, filter: PastFilter): List<Pick
         PastSort.MOST_BEATEN -> compareByDescending<PickRow> { it.pick.beaten ?: -1 }.then(newest)
         // Picks with no count go last here too.
         PastSort.LEAST_BEATEN -> compareBy<PickRow> { it.pick.beaten ?: Int.MAX_VALUE }.then(newest)
+        // Picks whose count hasn't loaded yet go last.
+        PastSort.MOST_POPULAR -> compareByDescending<PickRow> { players[it.pick.gameId] ?: -1 }.then(newest)
         PastSort.TITLE -> compareBy<PickRow, String>(String.CASE_INSENSITIVE_ORDER) { it.pick.displayTitle }.then(newest)
     }
     return past.sortedWith(order).filter { row ->
         row.pick.type in filter.types &&
             (filter.console == null || row.pick.console?.id == filter.console) &&
+            filter.completion.matches(completionOf(progress[row.pick.gameId], marks[row.pick.gameId])) &&
             when (filter.rom) {
             RomFilter.ANY -> true
             RomFilter.HAVE -> row.hasRom

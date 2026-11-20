@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -122,6 +123,7 @@ fun ClubScreen(
     /** The open game view's pick, as [PickRow.key]; null on the home or past-picks page. */
     var openKey by rememberSaveable { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
+    var raOpen by remember { mutableStateOf(false) }
     // The past-picks page. Kept here so it comes back as it was when its game view closes.
     var pastOpen by rememberSaveable { mutableStateOf(false) }
     var pastShown by rememberSaveable { mutableIntStateOf(PAST_BATCH) }
@@ -149,11 +151,36 @@ fun ClubScreen(
         else openGame(row) // shows what's missing and what to do
     }
 
+    // L1/R1 in the game view step through the list it was opened from: History as filtered and
+    // sorted, or the home screen's cards.
+    val stepList = remember(pastOpen, state.past, state.pastFilter, state.ra, state.marks, cards) {
+        if (pastOpen) historyRows(state.past, state.pastFilter, state.ra, state.marks) else cards.mapNotNull { it.row }
+    }
+    val openIndex = open?.let { o -> stepList.indexOfFirst { it.key == o.key } } ?: -1
+
+    fun stepTo(index: Int) {
+        val row = stepList[index]
+        openKey = row.key
+        // Coming back, focus lands on the game you stepped to.
+        if (pastOpen) {
+            pastFocus = index
+            if (index >= pastShown) pastShown = (index / PAST_BATCH + 1) * PAST_BATCH
+        } else {
+            returnTo = cards.indexOfFirst { it.row?.key == row.key }
+        }
+    }
+
     if (open != null) {
         BackHandler { openKey = null }
+        // Keyed by game, so stepping to another one starts its view afresh (focus, dialogs).
+        key(open.key) {
         GameView(
             row = open,
             vm = vm,
+            ra = state.ra,
+            mark = state.marks[open.pick.gameId],
+            onPrevious = if (openIndex > 0) ({ stepTo(openIndex - 1) }) else null,
+            onNext = if (openIndex in 0 until stepList.lastIndex) ({ stepTo(openIndex + 1) }) else null,
             revision = state.revision,
             hasSources = state.sources.isNotEmpty(),
             onBack = { openKey = null },
@@ -165,10 +192,14 @@ fun ClubScreen(
             showMessage = showMessage,
             modifier = modifier,
         )
+        }
     } else if (pastOpen) {
         BackHandler { pastOpen = false }
         PastPicksScreen(
             past = state.past,
+            ra = state.ra,
+            marks = state.marks,
+            onLoadPlayers = vm::loadPlayers,
             filter = state.pastFilter,
             onFilter = { vm.setPastFilter(it); pastShown = PAST_BATCH; pastFocus = 0 },
             shown = pastShown,
@@ -219,6 +250,7 @@ fun ClubScreen(
                             },
                         onOpen = { card.row?.let(::openGame) ?: showMessage("No ${card.label} right now.") },
                         onPlay = { card.row?.let(::play) ?: showMessage("No ${card.label} right now.") },
+                        completion = card.row?.let { completionOf(state.ra.progress[it.pick.gameId], state.marks[it.pick.gameId]) },
                     )
                 }
             }
@@ -256,9 +288,21 @@ fun ClubScreen(
             onAddFolder = { menuOpen = false; onAddFolder() },
             onOpenFolder = { source -> menuOpen = false; onOpenFolder(source) },
             onRequestAllFiles = { menuOpen = false; onRequestAllFiles() },
+            onRetroAchievements = { menuOpen = false; raOpen = true },
             showMessage = showMessage,
             onDismiss = { menuOpen = false },
         )
+    }
+    state.unrecognized?.let { choice ->
+        UnrecognizedFileDialog(
+            choice,
+            onChooseAnother = { vm.dismissUnrecognized(); onChooseFile(choice.row) },
+            onUseAnyway = { vm.useUnrecognizedAnyway(showMessage) },
+            onDismiss = vm::dismissUnrecognized,
+        )
+    }
+    if (raOpen) {
+        RaSignInDialog(vm, state.ra, onOpenUrl = onOpenUrl, showMessage = showMessage, onDismiss = { raOpen = false })
     }
 }
 
@@ -269,16 +313,24 @@ internal val PickRow.key: String get() = pick.event + "|" + pick.title
 
 /** A card: box art on the left; the pick type, title, console and status on the right. */
 @Composable
-internal fun PickCard(card: Card, modifier: Modifier, onOpen: () -> Unit, onPlay: () -> Unit) {
+internal fun PickCard(card: Card, modifier: Modifier, onOpen: () -> Unit, onPlay: () -> Unit, completion: Completion? = null) {
     var focused by remember { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
     val row = card.row
+    // A beaten game stands out: an outline and a faint wash in its trophy's colour.
+    val accent = trophyColor(completion)
+    val shape = RoundedCornerShape(16.dp)
     Row(
         modifier
             .scale(if (focused) 1.02f else 1f)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(shape)
             .background(colors.surfaceVariant)
-            .border(3.dp, if (focused) colors.primary else Color.Transparent, RoundedCornerShape(16.dp))
+            .then(if (accent != null) Modifier.background(accent.copy(alpha = 0.10f)) else Modifier)
+            .border(
+                if (focused) 3.dp else 2.dp,
+                when { focused -> colors.primary; accent != null -> accent; else -> Color.Transparent },
+                shape,
+            )
             .onFocusChanged { focused = it.isFocused }
             .onPad { pad ->
                 when (pad) {
@@ -330,7 +382,29 @@ internal fun PickCard(card: Card, modifier: Modifier, onOpen: () -> Unit, onPlay
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).padding(end = 8.dp),
                     )
-                    StatusBadge(row.state)
+                    // Ready is the norm, so it shows nothing; a problem shows its pill.
+                    if (row.state != PickState.READY) StatusChip(row.state)
+                    if (completion == Completion.DNF) {
+                        Text(
+                            "DNF",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.onSurface.copy(alpha = 0.7f),
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .clip(RoundedCornerShape(50))
+                                .border(1.5.dp, colors.onSurface.copy(alpha = 0.4f), RoundedCornerShape(50))
+                                .padding(horizontal = 8.dp, vertical = 2.dp),
+                        )
+                    }
+                    if (accent != null) {
+                        Icon(
+                            AppIcons.Trophy,
+                            contentDescription = if (completion == Completion.MASTERED) "Mastered" else "Beaten",
+                            tint = accent,
+                            modifier = Modifier.padding(start = 8.dp).size(30.dp),
+                        )
+                    }
                 }
             }
         }
@@ -359,19 +433,11 @@ fun StatusChip(state: PickState) {
     )
 }
 
-/** A pick's status: a quiet grey check when the game is ready, otherwise a status pill. */
-@Composable
-fun StatusBadge(state: PickState, checkSize: Dp = 26.dp) {
-    if (state == PickState.READY) {
-        Icon(
-            Icons.Filled.CheckCircle,
-            contentDescription = "Ready",
-            tint = Color(0xFF9AA0AA),
-            modifier = Modifier.size(checkSize),
-        )
-    } else {
-        StatusChip(state)
-    }
+/** A beaten game's accent: gold when mastered, silver when beaten; null otherwise. */
+private fun trophyColor(completion: Completion?): Color? = when (completion) {
+    Completion.MASTERED -> Color(0xFFE8C15A)
+    Completion.BEATEN -> Color(0xFFC3C9D3)
+    else -> null
 }
 
 /** The top bar: a title, an optional status line, and the settings cog (home) or help button (game view). */
