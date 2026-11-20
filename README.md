@@ -117,6 +117,9 @@ Add `-PcatalogueLive=true` to check every entry of the live emulator catalogue,
 or `-PclubPage=/path/to/saved.html` to check the parser against a saved copy of
 the club's page.
 
+GitHub Actions runs the unit tests and lint on every push and pull request
+(`.github/workflows/ci.yml`); the reports are kept as a build artifact.
+
 ## Licence
 
 [MIT](LICENSE). Code ported from rcheevos (MIT) and libchdr (BSD-3-Clause) keeps its own
