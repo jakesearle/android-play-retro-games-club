@@ -47,8 +47,13 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
 ### Before release (sharing on the club's Discord)
 
 **Features**
-- **Game manuals.** Link to the pick's manual, if a source can be matched reliably (check
-  whether RetroAchievements links manuals; else archive.org or Retro Game Manuals).
+- **Game manuals.** Looked into (November 2026): RetroAchievements has no manual link
+  (its API's only link is `GuideURL`, a guide). The one source keyed by ROM hash is
+  [ScreenScraper](https://www.screenscraper.fr/webapi2.php) (`jeuInfos.php` by CRC/MD5/SHA-1
+  plus size, then `mediaManuelJeu.php` for the PDF). It needs a registered developer ID and
+  password, has per-user quotas, and its terms allow it only in free apps (data under
+  CC BY-NC-SA). Matching manuals by title instead (archive.org, Retro Game Manuals) risks the
+  wrong one, so it's on hold until we decide on ScreenScraper.
 - **Preferred emulators.** Find which emulators Joey's Retro Handhelds recommends and prefer them.
 
 **Release basics**
