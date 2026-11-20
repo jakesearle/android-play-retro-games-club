@@ -17,7 +17,7 @@ object DiscHash {
             findFileSector(track, "PSX.EXE")?.let { (sector, size) -> found = Triple("PSX.EXE", sector, size) }
         }
         var (name, sector, size) = found ?: return null
-        val header = track.read(sector, 32)
+        val header = track.readAbsolute(sector, 32)
         if (header.size < 32) return null
         // The PS-X EXE header gives the code size 28 bytes in, not counting the 2048-byte header.
         if (String(header, 0, 7, Charsets.ISO_8859_1) == "PS-X EX") size = le32(header, 28) + 2048
@@ -26,7 +26,7 @@ object DiscHash {
 
     fun playstation2(track: CdTrack): String? {
         val (name, sector, size) = findExecutable(track, bootKey = "BOOT2", cdromPrefix = "cdrom0:") ?: return null
-        if (track.read(sector, 4).size < 4) return null
+        if (track.readAbsolute(sector, 4).size < 4) return null
         return hashFile(track, name, sector, size)
     }
 
@@ -34,8 +34,17 @@ object DiscHash {
     private fun hashFile(track: CdTrack, name: String, sector: Int, sizeIn: Int): String? {
         val md = MessageDigest.getInstance("MD5")
         md.update(name.toByteArray(Charsets.ISO_8859_1))
-        val first = track.read(sector, 2048)
-        if (first.size < 2048) return null
+        if (!appendFile(md, track, sector, sizeIn)) return null
+        return hex(md)
+    }
+
+    /**
+     * Adds a file's contents ([size] bytes from absolute [sector]) to [md], as rcheevos'
+     * rc_hash_cd_file: the first sector must read in full; at most 64 MB is hashed.
+     */
+    private fun appendFile(md: MessageDigest, track: CdTrack, sector: Int, sizeIn: Int): Boolean {
+        val first = track.readAbsolute(sector, 2048)
+        if (first.size < 2048) return false
         var size = minOf(sizeIn.toLong() and 0xFFFFFFFFL, MAX_BUFFER.toLong()).toInt()
         var current = sector
         var chunk = first
@@ -45,10 +54,93 @@ object DiscHash {
             if (size <= chunk.size) break
             size -= chunk.size
             current++
-            chunk = track.read(current, minOf(size, 2048))
+            chunk = track.readAbsolute(current, minOf(size, 2048))
             if (chunk.isEmpty()) break
         }
-        return md.digest().joinToString("") { "%02x".format(it) }
+        return true
+    }
+
+    private fun hex(md: MessageDigest) = md.digest().joinToString("") { "%02x".format(it) }
+
+    private fun startsWith(b: ByteArray, at: Int, text: String) =
+        b.size >= at + text.length && String(b, at, text.length, Charsets.ISO_8859_1) == text
+
+    // ── Sega CD and Saturn ───────────────────────────────────────────────────
+
+    /** The first 512 bytes of track 1 (the volume and ROM headers), if they're a Sega CD or Saturn's. */
+    fun segaCd(track1: CdTrack): String? {
+        val header = track1.read(0, 512)
+        if (header.size < 512 || !(startsWith(header, 0, "SEGADISCSYSTEM  ") || startsWith(header, 0, "SEGA SEGASATURN "))) return null
+        return hex(MessageDigest.getInstance("MD5").apply { update(header) })
+    }
+
+    // ── PC Engine CD ─────────────────────────────────────────────────────────
+
+    /**
+     * The first data track's boot header (sector 1): the 22-byte title, then the program
+     * sectors it names. GameExpress discs have a plain file system instead: their BOOT.BIN.
+     */
+    fun pcEngineCd(dataTrack: CdTrack): String? {
+        val header = dataTrack.read(1, 128)
+        if (header.size < 128) return null
+        val md = MessageDigest.getInstance("MD5")
+        if (startsWith(header, 32, "PC Engine CD-ROM SYSTEM")) {
+            md.update(header, 106, 22)
+            val sector = ((header[0].toInt() and 0xFF) shl 16) or ((header[1].toInt() and 0xFF) shl 8) or (header[2].toInt() and 0xFF)
+            val count = header[3].toInt() and 0xFF
+            for (i in 0 until count) md.update(dataTrack.read(sector + i, 2048).copyOf(2048))
+            return hex(md)
+        }
+        val (sector, size) = findFileSector(dataTrack, "BOOT.BIN") ?: return null
+        if (size >= MAX_BUFFER) return null
+        if (!appendFile(md, dataTrack, sector, size)) return null
+        return hex(md)
+    }
+
+    // ── Dreamcast ────────────────────────────────────────────────────────────
+
+    /**
+     * IP.BIN's first 256 bytes (track 3 on a GD-ROM, or the first data track of a MIL-CD), then
+     * the boot executable it names: in that track, or else in the disc's last track.
+     */
+    fun dreamcast(open: (TrackChoice) -> CdTrack?): String? {
+        var track = open(TrackChoice.Number(3))
+        var meta = track?.read(0, 256) ?: ByteArray(0)
+        if (!startsWith(meta, 0, "SEGA SEGAKATANA ")) {
+            track?.close()
+            track = open(TrackChoice.FirstData) ?: return null
+            meta = track.read(0, 256)
+            if (!startsWith(meta, 0, "SEGA SEGAKATANA ")) return null.also { track.close() }
+        }
+        try {
+            val md = MessageDigest.getInstance("MD5")
+            md.update(meta, 0, 256)
+            var length = 0
+            while (length < 16 && !Character.isWhitespace(meta[96 + length].toInt().toChar())) length++
+            if (length == 0) return null
+            val exe = String(meta, 96, length, Charsets.ISO_8859_1)
+            val (sector, size) = findFileSector(track!!, exe) ?: return null
+            if (track.readAbsolute(sector, 1).isEmpty()) {
+                track.close()
+                track = open(TrackChoice.Last) ?: return null
+            }
+            if (!appendFile(md, track!!, sector, size)) return null
+            return hex(md)
+        } finally {
+            track?.close()
+        }
+    }
+
+    // ── PSP ──────────────────────────────────────────────────────────────────
+
+    /** PSP_GAME/PARAM.SFO (the game's identity) followed by PSP_GAME/SYSDIR/EBOOT.BIN. */
+    fun psp(track: CdTrack): String? {
+        val md = MessageDigest.getInstance("MD5")
+        val (sfo, sfoSize) = findFileSector(track, "PSP_GAME\\PARAM.SFO") ?: return null
+        if (!appendFile(md, track, sfo, sfoSize)) return null
+        val (boot, bootSize) = findFileSector(track, "PSP_GAME\\SYSDIR\\EBOOT.BIN") ?: return null
+        if (!appendFile(md, track, boot, bootSize)) return null
+        return hex(md)
     }
 
     /** Reads SYSTEM.CNF and finds the boot executable it names: (name, sector, size). */
@@ -83,7 +175,7 @@ object DiscHash {
             sector = findFileSector(track, path.substring(0, slash))?.first ?: return null
             path = path.substring(slash + 1)
         } else {
-            // The primary volume descriptor is sector 16; the root directory record starts at 156.
+            // The primary volume descriptor is the track's sector 16; the root directory record starts at 156.
             val pvd = track.read(16, 256)
             if (pvd.size < 256) return null
             sector = le24(pvd, 156 + 2)
@@ -92,7 +184,8 @@ object DiscHash {
         }
 
         val name = path.toByteArray(Charsets.ISO_8859_1)
-        var buffer = track.read(sector, 2048)
+        // Directory records give the disc's sector numbers, so read by absolute sector.
+        var buffer = track.readAbsolute(sector, 2048)
         if (buffer.isEmpty()) return null
         var at = 0
         while (true) {
@@ -100,7 +193,7 @@ object DiscHash {
                 // End of this directory sector; directories can span several.
                 if (numSectors > 1) {
                     numSectors--
-                    buffer = track.read(++sector, 2048)
+                    buffer = track.readAbsolute(++sector, 2048)
                     if (buffer.isNotEmpty()) { at = 0; continue }
                 }
                 return null

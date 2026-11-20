@@ -30,8 +30,12 @@ class Chd(private val channel: SeekableByteChannel) : Closeable {
     private lateinit var mapOffsetOf: LongArray
     private lateinit var mapCrc: IntArray
 
-    /** CD tracks from the CHT2/CHTR metadata, in order. */
+    /** CD tracks from the CHT2/CHTR (or GD-ROM CHGD) metadata, in order. */
     val tracks: List<Track>
+
+    /** A Dreamcast GD-ROM image (CHGD metadata), whose track 3 starts at sector 45000. */
+    var gdRom = false
+        private set
 
     data class Track(val number: Int, val type: String, val frames: Int, val pregap: Int, val pregapInData: Boolean, val startFrame: Int)
 
@@ -255,7 +259,8 @@ class Chd(private val channel: SeekableByteChannel) : Closeable {
             val tag = be32(h, 0)
             val length = be32(h, 4) and 0xFFFFFF
             val following = be64(h, 8)
-            if (tag == CHT2 || tag == CHTR) {
+            if (tag == CHT2 || tag == CHTR || tag == CHGD) {
+                if (tag == CHGD) gdRom = true
                 val text = String(read(next + 16, length), Charsets.ISO_8859_1).trimEnd('\u0000')
                 fun field(name: String) = Regex("""$name:(\S+)""").find(text)?.groupValues?.get(1)
                 found += Track(
@@ -323,6 +328,7 @@ class Chd(private val channel: SeekableByteChannel) : Closeable {
         private val ZLIB = tag("zlib")
         private val CHT2 = tag("CHT2")
         private val CHTR = tag("CHTR")
+        private val CHGD = tag("CHGD")
         private val SYNC = byteArrayOf(0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0)
 
         private fun fourCc(v: Int) = String(byteArrayOf((v ushr 24).toByte(), (v ushr 16).toByte(), (v ushr 8).toByte(), v.toByte()), Charsets.ISO_8859_1)

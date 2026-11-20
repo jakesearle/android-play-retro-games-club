@@ -48,6 +48,8 @@ import app.retrolauncher.club.RaConsoles.WONDERSWAN
 import app.retrolauncher.club.RaConsoles.ZX_SPECTRUM
 import app.retrolauncher.club.disc.CdImages
 import app.retrolauncher.club.disc.DiscHash
+import app.retrolauncher.club.disc.GameCube
+import app.retrolauncher.club.disc.TrackChoice
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.InputStream
@@ -78,9 +80,10 @@ interface RomFile {
  * its contents. As in the NextUI Pak, a cartridge ROM in a .zip or .7z is hashed by the
  * file inside, because that is what emulators hand rcheevos.
  *
- * PlayStation and PlayStation 2 discs (CHD, CUE/BIN, ISO, M3U) are hashed by [DiscHash].
- * Other disc-based consoles (Saturn, Dreamcast, Sega CD, ...) aren't supported: [supports]
- * returns false and the caller falls back to a ROM the user picks.
+ * Disc consoles are hashed by [DiscHash] and [GameCube]: PlayStation, PlayStation 2, Sega CD,
+ * Saturn, PC Engine CD and Dreamcast (CHD, CUE/BIN, ISO, GDI, M3U), PSP (ISO, CSO, PBP) and
+ * GameCube (plain ISO/GCM only, not RVZ or GCZ). Others (Wii, 3DO, Neo Geo CD, ...) aren't
+ * supported: [supports] returns false and the caller falls back to a ROM the user picks.
  */
 object RaHash {
     /** rcheevos hashes at most the first 64 MB. */
@@ -105,8 +108,11 @@ object RaHash {
     )
 
     /** Disc consoles and the image formats their hash reads. */
-    private val DISC = setOf(RaConsoles.PLAYSTATION, RaConsoles.PLAYSTATION_2)
-    private val DISC_IMAGES = setOf("chd", "cue", "iso", "bin", "img", "m3u")
+    private val DISC = setOf(
+        RaConsoles.PLAYSTATION, RaConsoles.PLAYSTATION_2, RaConsoles.SEGA_CD, RaConsoles.SATURN,
+        RaConsoles.PC_ENGINE_CD, RaConsoles.DREAMCAST, RaConsoles.PSP, RaConsoles.GAMECUBE,
+    )
+    private val DISC_IMAGES = setOf("chd", "cue", "iso", "bin", "img", "m3u", "gdi", "cso", "gcm", "pbp")
 
     fun supports(consoleId: Int): Boolean =
         consoleId in WHOLE_FILE || consoleId in BUFFERED || consoleId == NINTENDO_64 ||
@@ -141,10 +147,19 @@ object RaHash {
     // ── Console rules ────────────────────────────────────────────────────────
 
     private fun disc(consoleId: Int, file: RomFile): String? {
-        if (file.name.substringAfterLast('.', "").lowercase() !in DISC_IMAGES) return null
-        val track = CdImages.openFirstTrack(file) ?: return null
-        return track.use {
-            if (consoleId == RaConsoles.PLAYSTATION) DiscHash.playstation(it) else DiscHash.playstation2(it)
+        val ext = file.name.substringAfterLast('.', "").lowercase()
+        if (ext !in DISC_IMAGES) return null
+        return when (consoleId) {
+            // A plain disc image, read directly (no CD sectors): compressed RVZ/GCZ aren't readable.
+            RaConsoles.GAMECUBE -> if (ext == "iso" || ext == "gcm") file.openChannel()?.use { GameCube.hash(it) } else null
+            // A PBP bundles the game's files; rcheevos hashes all of it.
+            RaConsoles.PSP -> if (ext == "pbp") file.open().use { md5(it, MAX_BUFFER.toLong()) }
+                else CdImages.openFirstTrack(file)?.use { DiscHash.psp(it) }
+            RaConsoles.DREAMCAST -> DiscHash.dreamcast { CdImages.openTrack(file, it) }
+            RaConsoles.PC_ENGINE_CD -> CdImages.openTrack(file, TrackChoice.FirstData)?.use { DiscHash.pcEngineCd(it) }
+            RaConsoles.SEGA_CD, RaConsoles.SATURN -> CdImages.openFirstTrack(file)?.use { DiscHash.segaCd(it) }
+            RaConsoles.PLAYSTATION -> CdImages.openFirstTrack(file)?.use { DiscHash.playstation(it) }
+            else -> CdImages.openFirstTrack(file)?.use { DiscHash.playstation2(it) }
         }
     }
 

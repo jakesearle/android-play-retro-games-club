@@ -110,9 +110,9 @@ class RaHashTest {
 
     @Test
     fun `other disc consoles are not supported`() {
-        assertNull(RaHash.hash(RaConsoles.SATURN, Rom("x.cue", rom)))
+        assertNull(RaHash.hash(RaConsoles.THREEDO, Rom("x.cue", rom)))
         assertTrue(RaHash.supports(RaConsoles.GAMEBOY))
-        assertTrue(!RaHash.supports(RaConsoles.SATURN))
+        assertTrue(!RaHash.supports(RaConsoles.THREEDO))
     }
 }
 
@@ -210,8 +210,8 @@ class ClubFinderTest {
             HashCache(File(tmp.root, "h2.tsv")), RomLinks(File(tmp.root, "l2.json")), open = { files[it.fileName] })
         assertTrue(offline.find(pick, listOf(game("a.gba", gameRom))) is FindResult.NoHashList)
 
-        val saturn = pick.copy(title = "Nights into Dreams (Saturn)")
-        assertTrue(finder().find(saturn, listOf(game("a.cue", gameRom))) is FindResult.Unsupported)
+        val wii = pick.copy(title = "Super Mario Galaxy (Wii)")
+        assertTrue(finder().find(wii, listOf(game("a.iso", gameRom))) is FindResult.Unsupported)
         assertTrue(finder().find(pick.copy(title = "Odd (Zork)"), emptyList()) is FindResult.UnknownGame)
     }
 
@@ -245,8 +245,8 @@ class VerifyChosenTest {
         // Offline with no saved list: can't check, so it's not accepted.
         assertEquals(ClubFinder.Verdict.NoHashList, ClubFinder.verifyChosen(library(online = false), gba, 5068, Rom("x.gba", gameRom)))
         // Disc consoles that can't be hashed yet are trusted.
-        val saturn = RaConsoles.Console(RaConsoles.SATURN, "Saturn", "Saturn")
-        assertEquals(ClubFinder.Verdict.NotCheckable, ClubFinder.verifyChosen(library(online = false), saturn, 1, Rom("x.cue", gameRom)))
+        val threeDo = RaConsoles.Console(RaConsoles.THREEDO, "3DO", "3DO")
+        assertEquals(ClubFinder.Verdict.NotCheckable, ClubFinder.verifyChosen(library(online = false), threeDo, 1, Rom("x.cue", gameRom)))
         val broken = object : RomFile {
             override val name = "z.gba"; override val parentName = null
             override fun open(): InputStream = throw java.io.IOException("card removed")

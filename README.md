@@ -18,8 +18,10 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
 - **Finding a pick among your ROMs** works by RetroAchievements hash. The app
   checks the ROMs in your folders for that console against RetroAchievements'
   list of known ROMs, so any file name works but only a recognized version
-  counts. Cartridge ROMs can be plain, zipped or in a .7z. Once a game has
-  launched, its file is remembered.
+  counts. Cartridge ROMs can be plain, zipped or in a .7z. Discs are matched for
+  PlayStation 1 and 2, Sega CD, Saturn, PC Engine CD and Dreamcast (CHD, CUE/BIN,
+  ISO, GDI), PSP (ISO, CSO, PBP) and GameCube (plain ISO/GCM; not RVZ or GCZ).
+  Once a game has launched, its file is remembered.
 - **Launching** uses the open emulator catalogue published by
   [CocoonFE](https://github.com/KansoMirai/CocoonFE), downloaded and cached at
   runtime, to build each emulator's launch intent.
@@ -64,8 +66,10 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   for a small JSON feed, which wouldn't break when the site is redesigned).
 
 **ROM matching**
-- **More disc consoles.** Prioritise the ones in the club's history (Saturn, Dreamcast,
-  Sega CD, PS2 DVD images as CHD…).
+- **More disc formats.** Not read yet: DVD-type CHDs (PS2, PSP; they use CHD's `huff`,
+  FLAC and zstd codecs), GameCube RVZ/GCZ, Wii (encrypted partitions), and 3DO, Neo Geo
+  CD, Jaguar CD and PC-FX. Sega CD, Saturn, PC Engine CD, Dreamcast, PSP and GameCube
+  hashing is tested on made-up images; it still needs checking on a real disc of each.
 
 ## Later
 

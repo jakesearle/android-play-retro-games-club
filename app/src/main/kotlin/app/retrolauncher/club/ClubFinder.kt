@@ -272,11 +272,13 @@ class ClubFinder(
         private val Game.extension get() = fileName.substringAfterLast('.', "").lowercase()
         private fun Game.folder() = (path ?: URLDecoder.decode(uri ?: "", "UTF-8")).substringBeforeLast('/')
 
-        /** BIN/IMG tracks in a folder with a CUE sheet are part of that disc, not separate games. */
+        /** BIN/IMG/RAW tracks in a folder with a CUE sheet or GDI are part of that disc, not separate games. */
         fun discAware(candidates: List<Game>): List<Game> {
-            val cueFolders = candidates.filter { it.extension == "cue" }.map { it.folder() }.toSet()
-            return candidates.filterNot { (it.extension == "bin" || it.extension == "img") && it.folder() in cueFolders }
+            val sheetFolders = candidates.filter { it.extension == "cue" || it.extension == "gdi" }.map { it.folder() }.toSet()
+            return candidates.filterNot { it.extension in TRACK_FILES && it.folder() in sheetFolders }
         }
+
+        private val TRACK_FILES = setOf("bin", "img", "raw")
 
         /** Lowercase words, skipping anything in () or [] (region tags, console labels). */
         fun words(s: String): Set<String> =
