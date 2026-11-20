@@ -97,6 +97,45 @@ class RvzTest {
         return head.array() + d.array() + body.toByteArray()
     }
 
+    /** A GCZ of [disc] in 16 KiB blocks: zlib-compressed, except one stored as is. */
+    private fun gcz(disc: ByteArray): ByteArray {
+        val block = 0x4000
+        val blocks = disc.size / block
+        val body = ByteArrayOutputStream()
+        val pointers = LongArray(blocks)
+        for (b in 0 until blocks) {
+            val data = disc.copyOfRange(b * block, (b + 1) * block)
+            pointers[b] = body.size().toLong()
+            if (b == 3) { pointers[b] = pointers[b] or Long.MIN_VALUE; body.write(data); continue }
+            val d = java.util.zip.Deflater(9).apply { setInput(data); finish() }
+            val buf = ByteArray(block * 2)
+            while (!d.finished()) body.write(buf, 0, d.deflate(buf))
+            d.end()
+        }
+        val head = ByteBuffer.allocate(32 + blocks * 12).order(ByteOrder.LITTLE_ENDIAN)
+        head.putInt(0xB10BC001.toInt()).putInt(0).putLong(body.size().toLong()).putLong(disc.size.toLong()).putInt(block).putInt(blocks)
+        pointers.forEach { head.putLong(it) }
+        repeat(blocks) { head.putInt(0) } // checksums, not checked
+        return head.array() + body.toByteArray()
+    }
+
+    @Test
+    fun `a GCZ reads back as the plain disc and hashes the same`() {
+        val disc = disc(specPadding(IntArray(17) { it * 7919 }, 0x8000))
+        val image = gcz(disc)
+        app.retrolauncher.club.disc.Gcz(ByteArrayChannel(image)).use { g ->
+            assertArrayEquals(disc, g.read(0, disc.size))
+            assertArrayEquals(disc.copyOfRange(0x3FF0, 0x4100), g.read(0x3FF0, 0x110))
+        }
+        fun rom(name: String, bytes: ByteArray) = object : RomFile {
+            override val name = name
+            override val parentName: String? = null
+            override fun open(): InputStream = ByteArrayInputStream(bytes)
+            override fun openChannel(): SeekableByteChannel = ByteArrayChannel(bytes)
+        }
+        assertEquals(RaHash.hash(RaConsoles.GAMECUBE, rom("g.iso", disc)), RaHash.hash(RaConsoles.GAMECUBE, rom("g.gcz", image)))
+    }
+
     @Test
     fun `an RVZ reads back as the plain disc and hashes the same`() {
         val seed = IntArray(17) { Random(it).nextInt() }

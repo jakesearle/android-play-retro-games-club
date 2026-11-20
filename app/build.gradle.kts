@@ -17,6 +17,8 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        // Android handhelds are ARM; leaving out x86 keeps native libraries (zstd) small.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     // Release signing reads keystore.properties at the project root (not in git; see

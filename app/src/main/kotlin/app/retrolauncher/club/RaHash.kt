@@ -49,6 +49,7 @@ import app.retrolauncher.club.RaConsoles.ZX_SPECTRUM
 import app.retrolauncher.club.disc.CdImages
 import app.retrolauncher.club.disc.DiscHash
 import app.retrolauncher.club.disc.GameCube
+import app.retrolauncher.club.disc.Gcz
 import app.retrolauncher.club.disc.Rvz
 import app.retrolauncher.club.disc.TrackChoice
 import java.io.ByteArrayInputStream
@@ -89,7 +90,7 @@ interface RomFile {
  *
  * Disc consoles are hashed by [DiscHash] and [GameCube]: PlayStation, PlayStation 2, Sega CD,
  * Saturn, PC Engine CD and Dreamcast (CHD, CUE/BIN, ISO, GDI, M3U), PSP (ISO, CSO, PBP) and
- * GameCube (plain ISO/GCM only, not RVZ or GCZ). Others (Wii, 3DO, Neo Geo CD, ...) aren't
+ * GameCube (ISO/GCM, RVZ/WIA, GCZ). Others (Wii, 3DO, Neo Geo CD, ...) aren't
  * supported: [supports] returns false and the caller falls back to a ROM the user picks.
  */
 object RaHash {
@@ -119,10 +120,10 @@ object RaHash {
         RaConsoles.PLAYSTATION, RaConsoles.PLAYSTATION_2, RaConsoles.SEGA_CD, RaConsoles.SATURN,
         RaConsoles.PC_ENGINE_CD, RaConsoles.DREAMCAST, RaConsoles.PSP, RaConsoles.GAMECUBE,
     )
-    /** Compressed GameCube images that can't be read yet (RVZ and WIA can). */
-    private val COMPRESSED_GAMECUBE = setOf("gcz", "wbfs", "ciso")
+    /** Compressed GameCube images that can't be read yet (RVZ, WIA and GCZ can). */
+    private val COMPRESSED_GAMECUBE = setOf("wbfs", "ciso")
 
-    private val DISC_IMAGES = setOf("chd", "cue", "iso", "bin", "img", "m3u", "gdi", "cso", "gcm", "pbp", "rvz", "wia")
+    private val DISC_IMAGES = setOf("chd", "cue", "iso", "bin", "img", "m3u", "gdi", "cso", "gcm", "pbp", "rvz", "wia", "gcz")
 
     fun supports(consoleId: Int): Boolean =
         consoleId in WHOLE_FILE || consoleId in BUFFERED || consoleId == NINTENDO_64 ||
@@ -167,6 +168,7 @@ object RaHash {
                 "iso", "gcm" -> file.openChannel()?.use { GameCube.hash(it) }
                 // Dolphin's compressed formats, read as the plain disc.
                 "rvz", "wia" -> file.openChannel()?.let { Rvz(it) }?.use { GameCube.hash(it) }
+                "gcz" -> file.openChannel()?.let { Gcz(it) }?.use { GameCube.hash(it::read) }
                 else -> null
             }
             // A PBP bundles the game's files; rcheevos hashes all of it.

@@ -8,7 +8,7 @@ import java.security.MessageDigest
  * RetroAchievements' GameCube hash, ported from rcheevos (`rc_hash_gamecube` and
  * `rc_hash_nintendo_disc_partition` in `src/rhash/hash_disc.c`, MIT): the disc header and
  * apploader, then the boot program's (main.dol's) 18 code and data segments. Reads a plain
- * disc image (.iso, .gcm), or an RVZ/WIA image through [Rvz]; GCZ can't be read yet.
+ * disc image (.iso, .gcm), or a compressed one through [Rvz] (RVZ, WIA) or [Gcz].
  */
 object GameCube {
     private const val BASE_HEADER_SIZE = 0x2440
