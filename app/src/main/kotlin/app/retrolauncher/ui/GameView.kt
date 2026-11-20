@@ -195,9 +195,9 @@ fun GameView(
             }
         }
         Footer {
-            PadHint("A", "Select")
             PadHint("X", "Play")
             PadHint("B", "Back")
+            PadHint("A", "Select")
         }
     }
 

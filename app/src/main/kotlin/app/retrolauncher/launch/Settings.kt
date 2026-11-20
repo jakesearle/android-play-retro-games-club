@@ -34,6 +34,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(SETUP_DONE, false)
         set(value) = prefs.edit { putBoolean(SETUP_DONE, value) }
 
+    /** How History is sorted and filtered, as the page encodes it (`PastFilter.encode`). */
+    var pastFilter: String?
+        get() = prefs.getString(PAST_FILTER, null)
+        set(value) = prefs.edit { putString(PAST_FILTER, value) }
+
     /** Debug builds only: extra test picks, as "title|RetroAchievements URL" lines. */
     var debugPicks: List<String>
         get() = prefs.getString(DEBUG_PICKS, null)?.lines()?.filter { it.isNotBlank() }.orEmpty()
@@ -43,5 +48,6 @@ class Settings(context: Context) {
         const val SOURCES = "sources"
         const val DEBUG_PICKS = "debug_picks"
         const val SETUP_DONE = "setup_done"
+        const val PAST_FILTER = "past_filter"
     }
 }

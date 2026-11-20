@@ -39,16 +39,19 @@ import app.retrolauncher.library.RomSource
 
 /** A dialog that closes on B, Start or Select as well as Back, with a title and focusable rows. */
 @Composable
-private fun PadDialog(
+internal fun PadDialog(
     title: String,
     onDismiss: () -> Unit,
     focus: FocusRequester,
     wide: Boolean = false,
+    /** Nearly the whole screen's width, for dialogs laid out across rather than down. */
+    fullWidth: Boolean = false,
+    hints: @Composable () -> Unit = { PadHint("B", "Close"); PadHint("A", "Select") },
     content: @Composable ColumnScope.() -> Unit,
 ) {
     // Android caps a dialog at its default dialog width (about a third of a 16:9 handheld screen)
     // unless told otherwise, so a wide dialog opts out and sizes itself to the screen.
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = !wide)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = !wide && !fullWidth)) {
         // A dialog has its own window and view. Focus has to be requested from inside it, once
         // its window has focus (a moment after it appears), so retry briefly, but stop as soon as
         // a row has focus: retrying after that would pull a quick D-pad press back to the top.
@@ -65,7 +68,13 @@ private fun PadDialog(
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
             modifier = Modifier
-                .then(if (wide) Modifier.fillMaxWidth(0.9f).widthIn(max = 760.dp) else Modifier.width(600.dp))
+                .then(
+                    when {
+                        fullWidth -> Modifier.fillMaxWidth(0.96f)
+                        wide -> Modifier.fillMaxWidth(0.9f).widthIn(max = 760.dp)
+                        else -> Modifier.width(600.dp)
+                    }
+                )
                 // Fit the 16:9 handheld screen; the list scrolls and the hint row stays visible.
                 .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.9f).dp)
                 // Unhandled, Start would fall back to a "click" on the focused row.
@@ -80,10 +89,7 @@ private fun PadDialog(
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 )
                 content()
-                Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
-                    PadHint("A", "Select")
-                    PadHint("B", "Close")
-                }
+                Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) { hints() }
             }
         }
     }
@@ -106,7 +112,7 @@ private fun Message(text: String) {
 
 /** The row a dialog focuses when it opens; pass it to [PadDialog] and to that row. */
 @Composable
-private fun rememberFirstFocus(): FocusRequester = remember { FocusRequester() }
+internal fun rememberFirstFocus(): FocusRequester = remember { FocusRequester() }
 
 /** Choose the emulator for a game, for this game only or all games on its platform. */
 @Composable

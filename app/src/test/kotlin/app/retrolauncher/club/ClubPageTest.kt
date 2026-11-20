@@ -40,7 +40,26 @@ object ClubFixture {
         <div class="jrh-picks-grid">
         ${card("Alien Hominid (GBA)", "Game of the Week November 15 - 21, 2026", "New week starts November 22, 2026", 5068)}
         ${card("Paper Mario (N64)", "Game of the Season Q4 2026 (Oct 1 - Dec 31)", "", 10056, image = "000001")}
-        </div></body></html>
+        </div>
+        <div class="jrh-history-row"><div class="jrh-history-row__winners"><div class="jrh-picks-tabs">
+        <div class="jrh-picks-tabs__panel jrh-picks-tabs__panel--gotw"><div class="jrh-paged-list"><div class="jrh-winners-history">
+        ${winner("014430", 5068, "Alien Hominid (GBA)", "November 15 - 21, 2026", 35)}
+        ${winner("017003", 2032, "Tiny Toon Adventures (NES)", "November 8 - 14, 2026", 43)}
+        </div></div></div>
+        <div class="jrh-picks-tabs__panel jrh-picks-tabs__panel--gots"><div class="jrh-paged-list"><div class="jrh-winners-history">
+        ${winner("048361", 10154, "Paper Mario (N64)", "Q4 2026 (Oct 1 - Dec 31)", 18)}
+        ${winner("000002", 32650, "Kingdom Hearts (PS2)", "Q3 2026 (Jul 1 - Sep 30)", 23)}
+        ${winner("000003", 11240, "Castlevania: Symphony of the Night (PS1)", "Q2 2026 (Apr 1 - Jun 30)", 0)}
+        </div></div></div>
+        </div></div></div>
+        </body></html>
+    """.trimIndent()
+
+    fun winner(image: String, raId: Int, title: String, period: String, beaten: Int) = """
+        <div class="jrh-winners-row jrh-paged-list__item" data-page="1"> <span class="jrh-winners-row__thumb" style="background-image:url('https://retroachievements.org/Images/$image.png')" aria-hidden="true"></span>
+        <span class="jrh-winners-row__title"> <a href="https://retroachievements.org/game/$raId" target="_blank" rel="noopener">$title</a> </span>
+        <span class="jrh-winners-row__period"> $period
+                &middot; $beaten beaten </span></div>
     """.trimIndent()
 }
 
@@ -190,6 +209,9 @@ class SavedClubPageTest {
         val html = java.io.File(path).readText()
         val picks = ClubPage.parse(html)
         for (p in picks) println("${p.event} | ${p.title} | console=${p.console?.name} game=${p.gameId} | ${p.stats} | ${p.imageUrl}")
+        val past = ClubPage.parsePast(html)
+        println("past picks: ${past.size}; first: ${past.firstOrNull()?.let { it.event + " | " + it.title }}; unknown consoles: ${past.filter { it.console == null }.map { it.title }}")
+        assertTrue(past.isNotEmpty())
         println("next change after now: ${ClubPage.nextChange(html, Instant.now())}")
         assertTrue(picks.isNotEmpty())
         assertTrue(picks.all { it.console != null && it.gameId > 0 && it.raUrl.isNotEmpty() })
@@ -254,5 +276,139 @@ class StatsOrderTest {
             ClubStat("Beaten", "24"), ClubStat("Completed", "5"), ClubStat("Rating", "7.2/10"),
         ))
         assertEquals(listOf("Rating", "Beaten", "Completed", "Mastered", "Time to beat", "Players"), pick.statsInOrder.map { it.key })
+    }
+}
+
+class PastPicksParseTest {
+    @Test
+    fun `past winners parse by type, newest first`() {
+        val past = ClubPage.parsePast(ClubFixture.page)
+        assertEquals(
+            listOf(
+                "Game of the Week November 15 - 21, 2026" to "Alien Hominid (GBA)",
+                "Game of the Week November 8 - 14, 2026" to "Tiny Toon Adventures (NES)",
+                "Game of the Season Q4 2026 (Oct 1 - Dec 31)" to "Paper Mario (N64)",
+                "Game of the Season Q3 2026 (Jul 1 - Sep 30)" to "Kingdom Hearts (PS2)",
+                "Game of the Season Q2 2026 (Apr 1 - Jun 30)" to "Castlevania: Symphony of the Night (PS1)",
+            ),
+            past.map { it.event to it.title },
+        )
+        // Before the club counted, "0 beaten" means no data, so there's no Beaten stat.
+        assertEquals(emptyList<ClubStat>(), past.last().stats)
+        assertEquals(listOf(ClubStat("Beaten", "23")), past[3].stats)
+        val toons = past[1]
+        assertEquals(2032, toons.gameId)
+        assertEquals(RaConsoles.NINTENDO, toons.console?.id)
+        assertEquals("https://retroachievements.org/Images/017003.png", toons.imageUrl)
+        assertEquals(listOf(ClubStat("Beaten", "43")), toons.stats)
+        // The current picks still parse as before.
+        assertEquals(2, ClubPage.parse(ClubFixture.page).size)
+    }
+
+    @Test
+    fun `a page without past winners has none`() {
+        assertEquals(emptyList<ClubPick>(), ClubPage.parsePast("<html><body></body></html>"))
+    }
+}
+
+class PeriodStartTest {
+    @Test
+    fun `weeks, months and seasons start on their first day`() {
+        fun d(text: String) = ClubPage.periodStart(text)?.toString()
+        assertEquals("2026-11-08", d("November 8 - 14, 2026"))
+        assertEquals("2026-08-30", d("August 30 - September 5, 2026"))
+        assertEquals("2026-12-28", d("December 28 - January 3, 2027"))
+        assertEquals("2024-08-01", d("August 2024"))
+        assertEquals("2026-10-01", d("Q4 2026 (Oct 1 - Dec 31)"))
+        assertEquals("2025-04-01", d("Q2 2025 (Apr 1 - Jun 30)"))
+        assertNull(d("Halloween Special"))
+    }
+}
+
+class PastFilterTest {
+    private fun row(event: String, title: String, state: app.retrolauncher.ui.PickState = app.retrolauncher.ui.PickState.CHECKING) =
+        app.retrolauncher.ui.PickRow(ClubPick(event, "", title, "", "", "https://retroachievements.org/game/1", "", emptyList()), state)
+
+    private val week = row("Game of the Week November 8 - 14, 2026", "A (GBA)", app.retrolauncher.ui.PickState.MISSING)
+    private val month = row("Game of the Month October 2026", "B (SNES)", app.retrolauncher.ui.PickState.READY)
+    private val romhack = row("Romhack of the Month October 2026", "C (SNES)")
+    private val season = row("Game of the Season Q3 2026 (Jul 1 - Sep 30)", "D (N64)", app.retrolauncher.ui.PickState.UNKNOWN)
+    private val oldWeek = row("Game of the Week October 4 - 10, 2026", "E (NES)", app.retrolauncher.ui.PickState.MISSING)
+    private val all = listOf(season, oldWeek, romhack, week, month)
+
+    private fun titles(filter: app.retrolauncher.ui.PastFilter) =
+        app.retrolauncher.ui.applyPastFilter(all, filter).map { it.pick.title.first() }.joinToString("")
+
+    @Test
+    fun `merged newest first, oldest first reverses`() {
+        assertEquals("AEBCD", titles(app.retrolauncher.ui.PastFilter()))
+        assertEquals("DCBEA", titles(app.retrolauncher.ui.PastFilter(sort = app.retrolauncher.ui.PastSort.OLDEST)))
+    }
+
+    @Test
+    fun `filters by type and by ROM`() {
+        val weeks = app.retrolauncher.ui.PastFilter(types = setOf(app.retrolauncher.ui.PickType.WEEK))
+        assertEquals("AE", titles(weeks))
+        assertEquals("B", titles(app.retrolauncher.ui.PastFilter(rom = app.retrolauncher.ui.RomFilter.HAVE)))
+        // Still checking (C) shows under neither; an unsupported console counts as missing.
+        assertEquals("AED", titles(app.retrolauncher.ui.PastFilter(rom = app.retrolauncher.ui.RomFilter.MISSING)))
+        // From Any, a type shows only that type; turning off the last one goes back to Any.
+        assertEquals(weeks, app.retrolauncher.ui.PastFilter().toggle(app.retrolauncher.ui.PickType.WEEK))
+        assertEquals(app.retrolauncher.ui.PastFilter(), weeks.toggle(app.retrolauncher.ui.PickType.WEEK))
+    }
+}
+
+class PastSortMoreTest {
+    private fun row(event: String, title: String, beaten: String?) = app.retrolauncher.ui.PickRow(
+        ClubPick(event, "", title, "", "", "https://retroachievements.org/game/1", "", listOfNotNull(beaten?.let { ClubStat("Beaten", it) })),
+    )
+    private val a = row("Game of the Week November 8 - 14, 2026", "zelda (SNES)", "43")
+    private val b = row("Game of the Week November 1 - 7, 2026", "Alien Hominid (GBA)", "51")
+    private val c = row("Game of the Month October 2026", "Metroid (SNES)", null)
+    private val all = listOf(c, a, b)
+
+    private fun titles(filter: app.retrolauncher.ui.PastFilter) =
+        app.retrolauncher.ui.applyPastFilter(all, filter).map { it.pick.displayTitle.first().uppercaseChar() }.joinToString("")
+
+    @Test
+    fun `most beaten, title and console`() {
+        assertEquals("AZM", titles(app.retrolauncher.ui.PastFilter(sort = app.retrolauncher.ui.PastSort.MOST_BEATEN)))
+        assertEquals("AMZ", titles(app.retrolauncher.ui.PastFilter(sort = app.retrolauncher.ui.PastSort.TITLE)))
+        assertEquals("ZAM", titles(app.retrolauncher.ui.PastFilter(sort = app.retrolauncher.ui.PastSort.LEAST_BEATEN)))
+        assertEquals("ZM", titles(app.retrolauncher.ui.PastFilter(console = RaConsoles.SUPER_NINTENDO)))
+        assertEquals(
+            listOf("Game Boy Advance" to 1, "SNES" to 2),
+            app.retrolauncher.ui.pastConsoles(all).map { it.second to it.third },
+        )
+    }
+}
+
+class PastFilterSaveAndSurpriseTest {
+    @Test
+    fun `filters save and load, and bad text falls back to defaults`() {
+        val filter = app.retrolauncher.ui.PastFilter(
+            sort = app.retrolauncher.ui.PastSort.LEAST_BEATEN,
+            types = setOf(app.retrolauncher.ui.PickType.MONTH, app.retrolauncher.ui.PickType.WEEK),
+            rom = app.retrolauncher.ui.RomFilter.HAVE,
+            console = RaConsoles.SUPER_NINTENDO,
+        )
+        assertEquals(filter, app.retrolauncher.ui.PastFilter.decode(filter.encode()))
+        assertEquals(app.retrolauncher.ui.PastFilter(), app.retrolauncher.ui.PastFilter.decode(null))
+        assertEquals(app.retrolauncher.ui.PastFilter(), app.retrolauncher.ui.PastFilter.decode("sort=WHATEVER;types=;junk"))
+    }
+
+    @Test
+    fun `surprise prefers ready picks, then found ROMs`() {
+        fun row(title: String, state: app.retrolauncher.ui.PickState) =
+            app.retrolauncher.ui.PickRow(ClubPick("Game of the Week November 8 - 14, 2026", "", title, "", "", "", "", emptyList()), state)
+        val ready = row("A (GBA)", app.retrolauncher.ui.PickState.READY)
+        val noEmu = row("B (GBA)", app.retrolauncher.ui.PickState.NO_EMULATOR)
+        val missing = row("C (GBA)", app.retrolauncher.ui.PickState.MISSING)
+        repeat(20) {
+            assertEquals(ready, app.retrolauncher.ui.surprisePick(listOf(missing, ready, noEmu)))
+            assertEquals(noEmu, app.retrolauncher.ui.surprisePick(listOf(missing, noEmu)))
+        }
+        assertEquals(missing, app.retrolauncher.ui.surprisePick(listOf(missing)))
+        assertNull(app.retrolauncher.ui.surprisePick(emptyList()))
     }
 }

@@ -28,13 +28,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /** Gamepad buttons used by the launcher. */
-enum class Pad { A, B, X, Y, START, SELECT }
+enum class Pad { A, B, X, Y, L1, R1, START, SELECT }
 
 fun padButton(keyCode: Int): Pad? = when (keyCode) {
     KeyEvent.KEYCODE_BUTTON_A -> Pad.A
     KeyEvent.KEYCODE_BUTTON_B -> Pad.B
     KeyEvent.KEYCODE_BUTTON_X -> Pad.X
     KeyEvent.KEYCODE_BUTTON_Y -> Pad.Y
+    KeyEvent.KEYCODE_BUTTON_L1 -> Pad.L1
+    KeyEvent.KEYCODE_BUTTON_R1 -> Pad.R1
     KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_MENU -> Pad.START
     KeyEvent.KEYCODE_BUTTON_SELECT -> Pad.SELECT
     else -> null

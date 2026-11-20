@@ -77,6 +77,13 @@ data class ClubState(
     val revision: Int = 0,
     /** The first-run setup is showing instead of the home screen. */
     val showSetup: Boolean = false,
+    /**
+     * The club's earlier picks (not the current ones), grouped by type, newest first. They stay
+     * [PickState.CHECKING] until the past-picks page asks for them ([ClubViewModel.checkPast]).
+     */
+    val past: List<PickRow> = emptyList(),
+    /** How the past-picks page sorts and filters. */
+    val pastFilter: PastFilter = PastFilter(),
 )
 
 enum class ChoiceScope { GAME, PLATFORM }
@@ -107,6 +114,11 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     /** The catalogue as downloaded, before [ExtraPlayers] are added: what "has it changed" compares. */
     private var sourceCatalogue: Catalogue? = null
     private var picks: List<ClubPick> = emptyList()
+    /** The ROM folders' games from the last scan, reused to check past picks without rescanning. */
+    private var scannedGames: List<Game>? = null
+    /** Past picks the past-picks page has shown, so they're checked (again, after a rescan). */
+    private val pastRequested = LinkedHashSet<ClubPick>()
+    private var pastJob: Job? = null
     /** The club's own picks, without debug test picks: what a re-check compares against. */
     private var clubPicks: List<ClubPick> = emptyList()
     private var checkJob: Job? = null
@@ -119,6 +131,7 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
             hasAllFilesAccess = hasAllFilesAccess(),
             linkCount = links.count(),
             showSetup = shouldShowSetup(settings.setupDone, settings.sources.isNotEmpty()),
+            pastFilter = PastFilter.decode(settings.pastFilter),
         )
     )
     val state: StateFlow<ClubState> = _state
@@ -165,6 +178,7 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
             is ClubResult.Ok -> {
                 clubPicks = result.picks
                 picks = result.picks + debugPicks()
+                setPast(result.past)
                 val status = offlineStatus(result.fetchedAt.takeIf { result.fromCache })
                 _state.update { s ->
                     s.copy(
@@ -192,6 +206,7 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         if (clubJob?.isActive == true) return
         clubJob = viewModelScope.launch {
             val result = withContext(Dispatchers.IO) { clubRepo.load(force = false) }
+            if (result is ClubResult.Ok) setPast(result.past, current = result.picks)
             when (val recheck = ClubRecheck.of(clubPicks, result)) {
                 ClubRecheck.Nothing -> Unit
                 is ClubRecheck.SamePicks -> _state.update { s ->
@@ -246,13 +261,68 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         checkJob = viewModelScope.launch {
             _state.update { s -> s.copy(rows = s.rows.map { it.copy(state = PickState.CHECKING) }) }
             val games = withContext(Dispatchers.IO) { scanner.scan(settings.sources, catalogue) }.values.flatten()
+            scannedGames = games
+            // Past picks already shown are checked again against the new scan.
+            _state.update { s -> s.copy(past = s.past.map { if (it.pick in pastRequested) it.copy(state = PickState.CHECKING) else it }) }
             for (pick in picks) {
                 if (!isActive) return@launch
                 val row = withContext(Dispatchers.IO) { check(catalogue, pick, games) }
                 _state.update { s -> s.copy(rows = s.rows.map { if (it.pick == pick) row else it }) }
             }
+            checkPast(emptyList())
         }
     }
+
+    // ── Past picks ───────────────────────────────────────────────────────────
+
+    /**
+     * Sets the club's earlier picks, leaving out the current ones (each Past Winners tab starts
+     * with the current pick of its type). Rows already checked keep their status.
+     */
+    private fun setPast(all: List<ClubPick>, current: List<ClubPick> = clubPicks) {
+        val earlier = all.filterNot { p ->
+            val type = p.type ?: return@filterNot false
+            current.any { it.raUrl == p.raUrl && it.type == type }
+        }
+        _state.update { s -> s.copy(past = earlier.map { p -> s.past.firstOrNull { it.pick == p } ?: PickRow(p) }) }
+        if (_state.value.pastFilter.rom != RomFilter.ANY) checkPast(earlier)
+    }
+
+    /**
+     * Sets how past picks are sorted and filtered. Filtering by ROM needs every past pick's
+     * status, not just the loaded batch, so that checks them all (in the background).
+     */
+    fun setPastFilter(filter: PastFilter) {
+        _state.update { it.copy(pastFilter = filter) }
+        settings.pastFilter = filter.encode()
+        if (filter.rom != RomFilter.ANY) checkPast(_state.value.past.map { it.pick })
+    }
+
+    /**
+     * Matches past picks against the ROMs, one at a time in the background: the past-picks page
+     * asks for each batch as it comes into view, so a long history doesn't mean hashing every
+     * console's ROMs up front. Picks asked for before are kept and re-checked after a rescan.
+     */
+    fun checkPast(batch: List<ClubPick>) {
+        pastRequested += batch
+        if (pastJob?.isActive == true) return
+        val catalogue = _state.value.catalogue ?: return
+        pastJob = viewModelScope.launch {
+            while (isActive) {
+                val next = _state.value.past.firstOrNull { it.pick in pastRequested && it.state == PickState.CHECKING }?.pick ?: break
+                val games = scannedGames ?: withContext(Dispatchers.IO) { scanner.scan(settings.sources, catalogue) }.values.flatten()
+                    .also { scannedGames = it }
+                val row = withContext(Dispatchers.IO) { check(catalogue, next, games) }
+                _state.update { s -> s.copy(past = s.past.map { if (it.pick == next) row else it }) }
+            }
+        }
+    }
+
+    /** Replaces a pick's row wherever it is: the current picks or the past ones. */
+    private fun ClubState.withRow(pick: ClubPick, row: PickRow) = copy(
+        rows = rows.map { if (it.pick == pick) row else it },
+        past = past.map { if (it.pick == pick) row else it },
+    )
 
     private fun check(catalogue: Catalogue, pick: ClubPick, games: List<Game>): PickRow {
         val console = pick.console
@@ -300,12 +370,11 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     /** Re-checks found games against installed emulators, without searching again. */
     private fun refreshEmulators() {
         val catalogue = _state.value.catalogue ?: return
-        _state.update { s ->
-            s.copy(rows = s.rows.map { row ->
-                val game = row.game
-                if (game != null && (row.state == PickState.READY || row.state == PickState.NO_EMULATOR)) found(catalogue, row.pick, game) else row
-            })
+        fun refreshed(row: PickRow): PickRow {
+            val game = row.game
+            return if (game != null && (row.state == PickState.READY || row.state == PickState.NO_EMULATOR)) found(catalogue, row.pick, game) else row
         }
+        _state.update { s -> s.copy(rows = s.rows.map(::refreshed), past = s.past.map(::refreshed)) }
     }
 
     fun play(row: PickRow): String? {
@@ -328,7 +397,7 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         links.save(row.pick.gameId, game)
         val catalogue = _state.value.catalogue ?: return "The emulator catalogue isn't loaded yet."
         val updated = found(catalogue, row.pick, game)
-        _state.update { s -> s.copy(rows = s.rows.map { if (it.pick == row.pick) updated else it }, linkCount = links.count()) }
+        _state.update { s -> s.withRow(row.pick, updated).copy(linkCount = links.count()) }
         return play(updated)
     }
 
@@ -355,7 +424,7 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         }
         links.save(row.pick.gameId, game)
         val updated = found(catalogue, row.pick, game)
-        _state.update { s -> s.copy(rows = s.rows.map { if (it.pick == row.pick) updated else it }, linkCount = links.count()) }
+        _state.update { s -> s.withRow(row.pick, updated).copy(linkCount = links.count()) }
         null
     }
 

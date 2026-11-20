@@ -68,7 +68,12 @@ enum class PickType(val label: String) {
 }
 
 /** A home-screen card: one of the four pick types (maybe with no current pick), a special, or a test pick. */
-internal data class Card(val label: String, val row: PickRow?)
+internal data class Card(
+    val label: String,
+    val row: PickRow?,
+    /** A line in the card's bottom-left corner, such as when a past pick ran. */
+    val note: String? = null,
+)
 
 /**
  * The home screen's cards: the four pick types in order (empty when there's no current pick),
@@ -114,18 +119,29 @@ fun ClubScreen(
     var focusedCard by remember { mutableStateOf<Int?>(null) }
     /** The card to put focus back on when the game view closes, or -1. */
     var returnTo by rememberSaveable { mutableIntStateOf(-1) }
-    var openTitle by rememberSaveable { mutableStateOf<String?>(null) }
+    /** The open game view's pick, as [PickRow.key]; null on the home or past-picks page. */
+    var openKey by rememberSaveable { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
+    // The past-picks page. Kept here so it comes back as it was when its game view closes.
+    var pastOpen by rememberSaveable { mutableStateOf(false) }
+    var pastShown by rememberSaveable { mutableIntStateOf(PAST_BATCH) }
+    var pastFocus by rememberSaveable { mutableIntStateOf(0) }
 
     val cards = remember(state.rows) { homeCards(state.rows) }
     val grid = rememberLazyGridState()
+    val gridRows = rememberGridRows(grid, CARD_HEIGHT + 16.dp)
     val requesters = remember(cards.size) { List(cards.size) { FocusRequester() } }
-    // Looked up by title so the game view follows the row as its status updates.
-    val open = openTitle?.let { t -> state.rows.firstOrNull { it.pick.title == t } }
+    // Looked up by key so the game view follows the row as its status updates.
+    val open = openKey?.let { k -> state.rows.firstOrNull { it.key == k } ?: state.past.firstOrNull { it.key == k } }
 
     fun openGame(row: PickRow) {
-        if (openTitle == null) returnTo = focusedIndex
-        openTitle = row.pick.title
+        if (openKey == null && !pastOpen) returnTo = focusedIndex
+        openKey = row.key
+    }
+
+    fun openPast() {
+        returnTo = focusedIndex
+        pastOpen = true
     }
 
     fun play(row: PickRow) {
@@ -134,19 +150,34 @@ fun ClubScreen(
     }
 
     if (open != null) {
-        BackHandler { openTitle = null }
+        BackHandler { openKey = null }
         GameView(
             row = open,
             vm = vm,
             revision = state.revision,
             hasSources = state.sources.isNotEmpty(),
-            onBack = { openTitle = null },
+            onBack = { openKey = null },
             onPlay = { play(open) },
             onChooseFile = { onChooseFile(open) },
             onAddFolder = onAddFolder,
             onOpenUrl = onOpenUrl,
             onOpenLink = onOpenLink,
             showMessage = showMessage,
+            modifier = modifier,
+        )
+    } else if (pastOpen) {
+        BackHandler { pastOpen = false }
+        PastPicksScreen(
+            past = state.past,
+            filter = state.pastFilter,
+            onFilter = { vm.setPastFilter(it); pastShown = PAST_BATCH; pastFocus = 0 },
+            shown = pastShown,
+            onShowMore = { pastShown += PAST_BATCH },
+            focusIndex = pastFocus,
+            onFocus = { pastFocus = it },
+            onCheck = { rows -> vm.checkPast(rows.map { it.pick }) },
+            onOpen = ::openGame,
+            onPlay = ::play,
             modifier = modifier,
         )
     } else {
@@ -157,11 +188,12 @@ fun ClubScreen(
                 .onPad { pad ->
                     when (pad) {
                         Pad.START -> { menuOpen = true; true }
+                        Pad.SELECT -> { openPast(); true }
                         else -> false
                     }
                 },
         ) {
-            Header(state.status, onSettings = { menuOpen = true })
+            Header(state.status, onSettings = { menuOpen = true }, onPast = ::openPast)
             // Two cards side by side, scrolling vertically; the grid keeps the focused card in view.
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
@@ -178,6 +210,7 @@ fun ClubScreen(
                             .fillMaxWidth()
                             .height(CARD_HEIGHT)
                             .focusRequester(requesters[index])
+                            .gridRowKeys(gridRows, index, requesters)
                             .onFocusChanged {
                                 // While returning from the game view, Compose briefly focuses some
                                 // other card on its own; don't let that overwrite where we're going back to.
@@ -189,9 +222,9 @@ fun ClubScreen(
                     )
                 }
             }
-            Footer(start = { PadHint("Start", "Settings") }) {
-                PadHint("A", "Details")
+            Footer(start = { PadHint("Start", "Settings"); PadHint("Select", "History") }) {
                 PadHint("X", "Play")
+                PadHint("A", "Details")
             }
         }
         // Put focus on the card the player was on, so the first D-pad press moves instead of
@@ -229,11 +262,14 @@ fun ClubScreen(
     }
 }
 
-private val CARD_HEIGHT = 150.dp
+internal val CARD_HEIGHT = 150.dp
+
+/** Identifies a pick across the current and past lists: the event names the type and period. */
+internal val PickRow.key: String get() = pick.event + "|" + pick.title
 
 /** A card: box art on the left; the pick type, title, console and status on the right. */
 @Composable
-private fun PickCard(card: Card, modifier: Modifier, onOpen: () -> Unit, onPlay: () -> Unit) {
+internal fun PickCard(card: Card, modifier: Modifier, onOpen: () -> Unit, onPlay: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
     val row = card.row
@@ -285,8 +321,15 @@ private fun PickCard(card: Card, modifier: Modifier, onOpen: () -> Unit, onPlay:
             }
             Spacer(Modifier.weight(1f))
             if (row != null) {
-                Row(Modifier.fillMaxWidth()) {
-                    Spacer(Modifier.weight(1f))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        card.note.orEmpty(),
+                        fontSize = 12.sp,
+                        color = colors.onSurface.copy(alpha = 0.6f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(end = 8.dp),
+                    )
                     StatusBadge(row.state)
                 }
             }
@@ -338,6 +381,10 @@ fun Header(
     title: String = "Play Retro Games Club",
     onSettings: (() -> Unit)? = null,
     onHelp: (() -> Unit)? = null,
+    onPast: (() -> Unit)? = null,
+    onFilter: (() -> Unit)? = null,
+    filtering: Boolean = false,
+    onSurprise: (() -> Unit)? = null,
 ) {
     Row(
         Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
@@ -348,6 +395,9 @@ fun Header(
             Text(status, fontSize = 14.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f), maxLines = 1, modifier = Modifier.padding(start = 16.dp))
         }
         if (onHelp != null) HelpButton(onHelp, Modifier.padding(start = 12.dp))
+        if (onSurprise != null) SurpriseButton(onSurprise, Modifier.padding(start = 12.dp))
+        if (onFilter != null) FilterButton(onFilter, filtering, Modifier.padding(start = 12.dp))
+        if (onPast != null) PastButton(onPast, Modifier.padding(start = 12.dp))
         if (onSettings != null) SettingsCog(onSettings, Modifier.padding(start = 12.dp))
     }
 }
@@ -374,6 +424,48 @@ private fun SettingsCog(onClick: () -> Unit, modifier: Modifier = Modifier) = He
     Icon(
         Icons.Filled.Settings,
         contentDescription = "Settings",
+        tint = if (focused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+        modifier = Modifier.size(28.dp),
+    )
+}
+
+/** History's "Surprise me" button: a die. */
+@Composable
+private fun SurpriseButton(onClick: () -> Unit, modifier: Modifier = Modifier) = HeaderButton(onClick, modifier) { focused ->
+    Icon(
+        AppIcons.Dice,
+        contentDescription = "Surprise me",
+        tint = if (focused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+        modifier = Modifier.size(26.dp),
+    )
+}
+
+/** The past-picks page's sort and filter button; a dot shows when a filter is on. */
+@Composable
+private fun FilterButton(onClick: () -> Unit, filtering: Boolean, modifier: Modifier = Modifier) = HeaderButton(onClick, modifier) { focused ->
+    val colors = MaterialTheme.colorScheme
+    Box {
+        Icon(
+            AppIcons.FilterList,
+            contentDescription = "Sort and filter",
+            tint = if (focused) colors.onPrimary else colors.onBackground.copy(alpha = 0.8f),
+            modifier = Modifier.size(28.dp),
+        )
+        if (filtering) {
+            Box(
+                Modifier.align(Alignment.TopEnd).size(9.dp).clip(CircleShape)
+                    .background(if (focused) colors.onPrimary else colors.primary),
+            )
+        }
+    }
+}
+
+/** The home screen's past-picks button: a history clock, beside the cog. */
+@Composable
+private fun PastButton(onClick: () -> Unit, modifier: Modifier = Modifier) = HeaderButton(onClick, modifier) { focused ->
+    Icon(
+        AppIcons.History,
+        contentDescription = "History",
         tint = if (focused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
         modifier = Modifier.size(28.dp),
     )

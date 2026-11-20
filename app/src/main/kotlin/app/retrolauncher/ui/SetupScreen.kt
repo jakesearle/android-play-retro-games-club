@@ -82,8 +82,8 @@ fun SetupScreen(
             }
         }
         Footer {
-            PadHint("A", "Select")
             if (step > 0) PadHint("B", "Back")
+            PadHint("A", "Select")
         }
     }
 

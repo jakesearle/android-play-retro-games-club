@@ -64,6 +64,89 @@ object ClubPage {
             .take(MAX_PICKS)
     }
 
+    /** The Past Winners tabs, by the id in their CSS class, with the pick type each holds. */
+    private val PAST_TABS = linkedMapOf(
+        "gotw" to "Game of the Week",
+        "gotm" to "Game of the Month",
+        "rhotm" to "Romhack of the Month",
+        "gots" to "Game of the Season",
+    )
+
+    /**
+     * The club's earlier picks, from the page's Past Winners tabs (`jrh-picks-tabs__panel--gotw`
+     * and so on, rows `jrh-winners-row`): every row is on the page, the site pages them in the
+     * browser. Grouped by type, newest first, as the site lists them; each tab starts with the
+     * current pick. Rows have no description or guide, and one stat: how many members beat it.
+     */
+    /**
+     * The first day of a pick's period, for sorting: "November 8 - 14, 2026" (a week, which may
+     * run into the next month or year), "November 2026" (a month) or "Q4 2026 (Oct 1 - Dec 31)"
+     * (a season). Null if the text isn't one of those.
+     */
+    fun periodStart(period: String): LocalDate? {
+        val p = period.trim()
+        fun month(name: String) = MONTHS.indexOfFirst { it.equals(name, ignoreCase = true) }.takeIf { it >= 0 }?.plus(1)
+        return runCatching {
+            QUARTER.find(p)?.let { m ->
+                val (q, year) = m.destructured
+                return@runCatching LocalDate.of(year.toInt(), (q.toInt() - 1) * 3 + 1, 1)
+            }
+            WEEK.find(p)?.let { m ->
+                val (startMonth, day, endMonth, _, year) = m.destructured
+                val start = month(startMonth) ?: return@runCatching null
+                val end = if (endMonth.isEmpty()) start else month(endMonth) ?: return@runCatching null
+                // The year belongs to the last day: "December 28 - January 3, 2027" starts in 2026.
+                return@runCatching LocalDate.of(year.toInt() - if (end < start) 1 else 0, start, day.toInt())
+            }
+            MONTH.find(p)?.let { m ->
+                val (name, year) = m.destructured
+                return@runCatching LocalDate.of(year.toInt(), month(name) ?: return@runCatching null, 1)
+            }
+            null
+        }.getOrNull()
+    }
+
+    private val QUARTER = Regex("""^Q([1-4])\s+(\d{4})""")
+    private val WEEK = Regex("""^([A-Za-z]+)\s+(\d{1,2})\s*-\s*(?:([A-Za-z]+)\s+)?(\d{1,2}),\s*(\d{4})""")
+    private val MONTH = Regex("""^([A-Za-z]+)\s+(\d{4})$""")
+
+    fun parsePast(html: String): List<ClubPick> {
+        val doc = Jsoup.parse(html, URL)
+        return PAST_TABS.flatMap { (id, type) ->
+            val panel = doc.selectFirst(".jrh-picks-tabs__panel--$id") ?: return@flatMap emptyList()
+            panel.select(".jrh-winners-row").mapNotNull { row ->
+                val link = row.selectFirst(".jrh-winners-row__title a") ?: return@mapNotNull null
+                val title = link.text().trim().ifEmpty { return@mapNotNull null }
+                // "November 8 - 14, 2026 · 43 beaten"
+                val periodLine = row.selectFirst(".jrh-winners-row__period")?.let(::visibleText).orEmpty()
+                val period = periodLine.substringBefore('·').trim()
+                val beaten = Regex("""(\d+)\s+beaten""").find(periodLine)?.groupValues?.get(1)
+                    // Before the club counted, the page says "0 beaten"; that's no data, not nobody.
+                    ?.takeUnless { it == "0" && periodStart(period)?.isBefore(BEATEN_COUNTED_FROM) == true }
+                val style = row.selectFirst(".jrh-winners-row__thumb")?.attr("style").orEmpty()
+                ClubPick(
+                    event = if (period.isEmpty()) type else "$type $period",
+                    next = "",
+                    title = title,
+                    description = "",
+                    imageUrl = IMAGE_URL.find(style)?.groupValues?.get(1).orEmpty(),
+                    raUrl = link.absUrl("href"),
+                    guideUrl = "",
+                    stats = listOfNotNull(beaten?.let { ClubStat("Beaten", it) }),
+                )
+            }
+        }
+    }
+
+    /**
+     * The club started counting who beat each pick around here: the first week with a count is
+     * June 28 – July 4, 2026, and the months and seasons before July 2026 all say 0. Picks that
+     * started earlier show no Beaten stat rather than a misleading 0.
+     */
+    val BEATEN_COUNTED_FROM: LocalDate = LocalDate.of(2026, 6, 28)
+
+    private val IMAGE_URL = Regex("""url\(\s*['"]?([^'")]+)['"]?\s*\)""")
+
     private fun parseCard(card: Element): ClubPick {
         fun text(selector: String) = card.selectFirst(selector)?.let(::visibleText).orEmpty()
 

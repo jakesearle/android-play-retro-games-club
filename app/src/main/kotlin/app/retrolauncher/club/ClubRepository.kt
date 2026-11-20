@@ -47,8 +47,14 @@ sealed interface ClubResult {
     /**
      * @param fromCache the site couldn't be reached and this is the saved page.
      * @param fetchedAt when the site last confirmed the page.
+     * @param past the club's earlier picks, from the page's Past Winners ([ClubPage.parsePast]).
      */
-    data class Ok(val picks: List<ClubPick>, val fromCache: Boolean, val fetchedAt: Instant) : ClubResult
+    data class Ok(
+        val picks: List<ClubPick>,
+        val fromCache: Boolean,
+        val fetchedAt: Instant,
+        val past: List<ClubPick> = emptyList(),
+    ) : ClubResult
     data class NetworkError(val error: Throwable) : ClubResult
     /** Downloaded, but no picks were found: the page's markup changed. */
     data object ParseError : ClubResult
@@ -79,7 +85,7 @@ class ClubRepository(
         if (!force && meta != null && saved != null && saved.second.isNotEmpty()) {
             val (html, picks) = saved
             if (ClubPage.cacheIsFresh(now, meta.fetched, ClubPage.nextChange(html, meta.fetched))) {
-                return ClubResult.Ok(picks, fromCache = false, fetchedAt = meta.fetched)
+                return ClubResult.Ok(picks, fromCache = false, fetchedAt = meta.fetched, past = ClubPage.parsePast(html))
             }
         }
 
@@ -89,7 +95,7 @@ class ClubRepository(
             if (response.notModified) {
                 if (canRevalidate) {
                     writeMeta(Meta(now, response.etag ?: meta?.etag))
-                    return ClubResult.Ok(saved!!.second, fromCache = false, fetchedAt = now)
+                    return ClubResult.Ok(saved!!.second, fromCache = false, fetchedAt = now, past = ClubPage.parsePast(saved.first))
                 }
                 response = http.get(ClubPage.URL, null)
             }
@@ -100,11 +106,16 @@ class ClubRepository(
                 dir.mkdirs()
                 atomicWrite(htmlFile, response.body)
                 writeMeta(Meta(now, response.etag))
-                ClubResult.Ok(picks, fromCache = false, fetchedAt = now)
+                ClubResult.Ok(picks, fromCache = false, fetchedAt = now, past = ClubPage.parsePast(response.body))
             }
         } catch (e: IOException) {
             if (saved != null && saved.second.isNotEmpty()) {
-                ClubResult.Ok(saved.second, fromCache = true, fetchedAt = meta?.fetched ?: Instant.ofEpochMilli(htmlFile.lastModified()))
+                ClubResult.Ok(
+                    saved.second,
+                    fromCache = true,
+                    fetchedAt = meta?.fetched ?: Instant.ofEpochMilli(htmlFile.lastModified()),
+                    past = ClubPage.parsePast(saved.first),
+                )
             } else {
                 ClubResult.NetworkError(e)
             }
