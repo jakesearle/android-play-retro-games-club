@@ -47,8 +47,6 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
 **Features**
 - **Game manuals.** Link to the pick's manual, if a source can be matched reliably (check
   whether RetroAchievements links manuals; else archive.org or Retro Game Manuals).
-- **RetroAchievements in first-run setup.** Signing in (username and Web API key) is in
-  Settings › RetroAchievements; offer it as an optional setup step too.
 - **Preferred emulators.** Find which emulators Joey's Retro Handhelds recommends and prefer them.
 
 **Release basics**

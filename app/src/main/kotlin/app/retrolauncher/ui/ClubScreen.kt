@@ -112,7 +112,7 @@ fun ClubScreen(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     if (state.showSetup) {
-        SetupScreen(vm, state, onAddFolder, onRequestAllFiles, modifier)
+        SetupScreen(vm, state, onAddFolder, onRequestAllFiles, onOpenUrl, showMessage, modifier)
         return
     }
     var focusedIndex by rememberSaveable { mutableIntStateOf(0) }

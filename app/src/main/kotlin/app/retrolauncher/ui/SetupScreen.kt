@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -36,9 +37,9 @@ import androidx.compose.ui.unit.sp
 import app.retrolauncher.library.RomSource
 
 /**
- * First-run setup, three steps: what the app does, choosing the ROMs folder, and how the current
+ * First-run setup, four steps: what the app does, choosing the ROMs folder, how the current
  * picks look with the emulators installed (assuming emulators such as RetroArch are already set
- * up). B goes back a step. Shown until finished or skipped, while there are no ROM folders
+ * up), and signing in to RetroAchievements, which can be skipped. B goes back a step. Shown until finished or skipped, while there are no ROM folders
  * ([shouldShowSetup]).
  */
 @Composable
@@ -47,9 +48,12 @@ fun SetupScreen(
     state: ClubState,
     onAddFolder: () -> Unit,
     onRequestAllFiles: () -> Unit,
+    onOpenUrl: (String) -> Unit,
+    showMessage: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var step by rememberSaveable { mutableIntStateOf(0) }
+    var signInOpen by remember { mutableStateOf(false) }
     val first = remember(step) { FocusRequester() }
     BackHandler(enabled = step > 0) { step-- }
 
@@ -69,7 +73,7 @@ fun SetupScreen(
         ) {
             Column(Modifier.widthIn(max = 620.dp)) {
                 Text(
-                    "Step ${step + 1} of 3",
+                    "Step ${step + 1} of $STEPS",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold,
@@ -77,7 +81,8 @@ fun SetupScreen(
                 when (step) {
                     0 -> WelcomeStep(first, onStart = { step = 1 }, onSkip = vm::finishSetup)
                     1 -> FolderStep(vm, state, first, onAddFolder, onRequestAllFiles, onContinue = { step = 2 })
-                    else -> EmulatorStep(state, first, onDone = vm::finishSetup)
+                    2 -> EmulatorStep(state, first, onContinue = { step = 3 })
+                    else -> RetroAchievementsStep(state, first, onSignIn = { signInOpen = true }, onDone = vm::finishSetup)
                 }
             }
         }
@@ -90,8 +95,13 @@ fun SetupScreen(
     // Focus the step's first button when it appears (see takeControllerFocus).
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     val view = LocalView.current
-    LaunchedEffect(step, windowFocused) { if (windowFocused) takeControllerFocus(view, first) }
+    // Also after the sign-in dialog closes, when the step's first button may have changed.
+    LaunchedEffect(step, windowFocused, state.ra.user) { if (windowFocused) takeControllerFocus(view, first) }
+
+    if (signInOpen) RaSignInDialog(vm, state.ra, onOpenUrl, showMessage, onDismiss = { signInOpen = false })
 }
+
+private const val STEPS = 4
 
 @Composable
 private fun StepTitle(title: String, body: String) {
@@ -171,7 +181,7 @@ private fun FolderStep(
 }
 
 @Composable
-private fun EmulatorStep(state: ClubState, first: FocusRequester, onDone: () -> Unit) {
+private fun EmulatorStep(state: ClubState, first: FocusRequester, onContinue: () -> Unit) {
     StepTitle(
         "Emulators",
         "Each pick starts in an emulator you have installed. Here's how the club's current picks look:",
@@ -198,7 +208,26 @@ private fun EmulatorStep(state: ClubState, first: FocusRequester, onDone: () -> 
         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
         modifier = Modifier.padding(top = 8.dp, bottom = 12.dp),
     )
-    Choice("Done", modifier = Modifier.focusRequester(first), onClick = onDone)
+    Choice("Continue", modifier = Modifier.focusRequester(first), onClick = onContinue)
+}
+
+/** Optional: sign in to RetroAchievements (the same dialog as in Settings), or skip. */
+@Composable
+private fun RetroAchievementsStep(state: ClubState, first: FocusRequester, onSignIn: () -> Unit, onDone: () -> Unit) {
+    val user = state.ra.user
+    StepTitle(
+        "RetroAchievements",
+        "Optional. Sign in to see a trophy on picks you've beaten or mastered, your progress in each " +
+            "game, the next achievement towards beating it, and History's progress filter. You'll need " +
+            "your username and Web API key, from your RetroAchievements settings.",
+    )
+    if (user != null) {
+        Text("Signed in as $user.", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
+        Choice("Done", modifier = Modifier.focusRequester(first), onClick = onDone)
+    } else {
+        Choice("Sign in…", "Opens the sign-in, with a link to the page that has your key.", Modifier.focusRequester(first), onSignIn)
+        Choice("Skip", "You can sign in later from Settings › RetroAchievements.", onClick = onDone)
+    }
 }
 
 /** A pick's status spelled out, for setup, where there's room and nothing is learned yet. */
