@@ -38,6 +38,13 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   RetroAchievements) with your username and Web API key, kept encrypted on the
   device. Counts are hardcore; softcore-only progress is marked. Beaten and
   mastered games get a trophy on their card.
+- **Romhacks from your base ROM.** When a romhack pick is missing but you have the
+  game it's built on, its card says *Can patch* and its game view offers *Make hack*: the
+  app downloads the hack's patch from RetroAchievements'
+  [RAPatches](https://github.com/RetroAchievements/RAPatches) (BPS, IPS or xdelta), applies
+  it, and keeps the result only if RetroAchievements recognises it as that hack (the newest
+  such version, when there are several). It's saved next to the base ROM, or in that
+  folder's `Hacks` subfolder if there is one.
 - **Your own marks** cover what RetroAchievements can't know: mark a game
   *Completed somewhere else* (counts as beaten) or *Did not finish* from its
   game view. A beaten or mastered award on RetroAchievements takes precedence.

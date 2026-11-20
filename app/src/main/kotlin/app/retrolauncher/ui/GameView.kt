@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
@@ -102,6 +103,8 @@ fun GameView(
     val art by rememberBoxArt(pick.imageUrl)
     var pickerOpen by remember { mutableStateOf(false) }
     var markOpen by remember { mutableStateOf(false) }
+    /** While a hack is being made: what's happening ("Downloading the patch…"). */
+    var hackStatus by remember { mutableStateOf<String?>(null) }
     var copiesOpen by remember { mutableStateOf(false) }
     var getEmulatorOpen by remember { mutableStateOf(false) }
     var helpOpen by remember { mutableStateOf(false) }
@@ -118,6 +121,14 @@ fun GameView(
             PickState.NO_EMULATOR -> add(Action("Emulator", Icons.Filled.Build) { pickerOpen = true })
             PickState.CHOOSE_COPY -> add(Action("Choose copy", Icons.AutoMirrored.Filled.List) { copiesOpen = true })
             PickState.MISSING -> {
+                if (row.patchBase != null) {
+                    add(Action(if (hackStatus != null) "Making…" else "Make hack", Icons.Filled.Create, primary = true) {
+                        if (hackStatus == null) {
+                            hackStatus = "Starting…"
+                            vm.makeHack(row, status = { hackStatus = it }, done = { message -> hackStatus = null; showMessage(message) })
+                        }
+                    })
+                }
                 add(Action("Choose ROM file", Icons.Filled.Search) { onChooseFile() })
                 add(Action("Add ROM folder", Icons.Filled.Add) { onAddFolder() })
                 add(Action("Search again", Icons.Filled.Refresh) { vm.checkPicks() })
@@ -213,6 +224,10 @@ fun GameView(
                         )
                     }
                 }
+                hackStatus?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+                }
                 Spacer(Modifier.height(10.dp))
                 // The game's summary, then which file and emulator it uses (or what's missing).
                 Description(
@@ -281,7 +296,8 @@ private fun statusLine(row: PickRow, vm: ClubViewModel, @Suppress("UNUSED_PARAME
         PickState.CHECKING -> "Looking for this game in your ROM folders…"
         PickState.NOT_CHECKED -> "The search was stopped before this game was checked. Search again to finish; ROMs already read aren't read again."
         PickState.MISSING, PickState.UNKNOWN ->
-            (row.message ?: "Not found.") + if (!hasSources) "\nNo ROM folders added yet." else ""
+            (row.message ?: "Not found.") + (if (!hasSources) "\nNo ROM folders added yet." else "") +
+                (row.patchBase?.let { "\nYou have ${it.fileName}. Make hack patches it into this hack with RetroAchievements' patch, and keeps it only if it's the version RetroAchievements supports." } ?: "")
     }
 
 /**

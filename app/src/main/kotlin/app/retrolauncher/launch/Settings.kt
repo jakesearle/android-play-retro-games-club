@@ -39,6 +39,11 @@ class Settings(context: Context) {
         get() = prefs.getString(PAST_FILTER, null)
         set(value) = prefs.edit { putString(PAST_FILTER, value) }
 
+    /** The one-time tip about Cocoon's sub-folder setting has been shown. */
+    var cocoonTipShown: Boolean
+        get() = prefs.getBoolean(COCOON_TIP, false)
+        set(value) = prefs.edit { putBoolean(COCOON_TIP, value) }
+
     /** Your marks on games, by RA game ID: the mark's name ("DNF", "COMPLETED_ELSEWHERE"). */
     fun marks(): Map<Int, String> = prefs.all.mapNotNull { (k, v) ->
         if (!k.startsWith(MARK)) return@mapNotNull null
@@ -60,5 +65,6 @@ class Settings(context: Context) {
         const val SETUP_DONE = "setup_done"
         const val PAST_FILTER = "past_filter"
         const val MARK = "mark/"
+        const val COCOON_TIP = "cocoon_tip_shown"
     }
 }

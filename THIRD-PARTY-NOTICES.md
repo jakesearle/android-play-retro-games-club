@@ -93,5 +93,7 @@ Not included in this repository:
 - The [Play Retro Games Club](https://www.joeysretrohandhelds.com/play-retro-games-club/) page.
 - RetroAchievements' ROM hash lists and box art, and, once you sign in, your progress and
   games' achievement lists from its [Web API](https://api-docs.retroachievements.org).
+- Romhack patches from RetroAchievements' [RAPatches](https://github.com/RetroAchievements/RAPatches),
+  downloaded only when you make a hack (and its file list, once a day).
 - The [Obtainium Emulation Pack](https://github.com/RJNY/Obtainium-Emulation-Pack)
   (Unlicense), for the emulators suggested when a pick has none.

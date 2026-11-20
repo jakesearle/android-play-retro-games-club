@@ -109,7 +109,8 @@ class MainActivity : ComponentActivity() {
      * Debug builds only: add test picks from adb, e.g.
      * `adb shell am start -n garden.searle.prgc/app.retrolauncher.MainActivity --es debug_pick "Castlevania: Symphony of the Night (PS1)|https://retroachievements.org/game/11240"`,
      * optionally with "|Event label" at the end to pose as that kind of pick (a special, say),
-     * or remove them with `--ez debug_clear_picks true`. Release builds ignore these extras.
+     * or remove them with `--ez debug_clear_picks true`. `--ei debug_make_hack <RA game ID>` runs
+     * Make hack for that pick and logs each step (tag PRGC). Release builds ignore these extras.
      */
     private fun handleDebugExtras(intent: Intent?) {
         if (intent == null || applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) return
@@ -117,6 +118,13 @@ class MainActivity : ComponentActivity() {
         when {
             intent.getBooleanExtra("debug_clear_picks", false) -> vm.setDebugPicks(emptyList())
             intent.hasExtra("debug_pick") -> vm.setDebugPicks((current + intent.getStringExtra("debug_pick").orEmpty()).distinct())
+            intent.hasExtra("debug_make_hack") -> {
+                val id = intent.getIntExtra("debug_make_hack", 0)
+                val state = vm.state.value
+                val row = (state.rows + state.past).firstOrNull { it.pick.gameId == id }
+                android.util.Log.i("PRGC", "make hack $id: ${row?.state} base=${row?.patchBase?.fileName}")
+                if (row != null) vm.makeHack(row, status = { android.util.Log.i("PRGC", "status: $it") }, done = { android.util.Log.i("PRGC", "done: $it") })
+            }
         }
     }
 

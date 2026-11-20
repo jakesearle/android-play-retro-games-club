@@ -39,6 +39,12 @@ import app.retrolauncher.library.LibraryScanner
 import app.retrolauncher.library.RomFiles
 import app.retrolauncher.library.RomSource
 import app.retrolauncher.library.SafPaths
+import app.retrolauncher.club.RaHash
+import app.retrolauncher.club.patch.BaseRoms
+import app.retrolauncher.club.patch.Patcher
+import app.retrolauncher.club.patch.RaPatch
+import app.retrolauncher.club.patch.RaPatchesRepository
+import app.retrolauncher.library.RomWriter
 import app.retrolauncher.ra.RaAccount
 import app.retrolauncher.ra.RaAccountStore
 import app.retrolauncher.ra.RaAuthException
@@ -80,6 +86,8 @@ data class PickRow(
     val copies: List<Game> = emptyList(),
     /** Why it can't be played (NO_EMULATOR, MISSING, UNKNOWN). */
     val message: String? = null,
+    /** MISSING, but this romhack can be made from a base ROM you have, by patching it. */
+    val patchBase: Game? = null,
 )
 
 data class ClubState(
@@ -107,6 +115,8 @@ data class ClubState(
     val unrecognized: UnrecognizedChoice? = null,
     /** A search that's taking a while, shown in the header with a Stop button; null when idle. */
     val scan: ScanProgress? = null,
+    /** A hack was just saved in a Hacks folder for the first time: explain Cocoon's sub-folder setting. */
+    val cocoonTip: Boolean = false,
 )
 
 /** RetroAchievements: who's signed in, and what the Web API has said. */
@@ -154,6 +164,10 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     private val emulatorPack = EmulatorPackRepository(File(app.filesDir, "pack"), HashLibrary::httpGet)
     private val links = RomLinks(File(app.filesDir, "links.json"))
     private val raAccounts = RaAccountStore(app)
+    private val raPatches = RaPatchesRepository(File(app.filesDir, "rapatches"))
+    @Volatile private var patchIndex: Map<Int, RaPatch> = emptyMap()
+    private val romWriter = RomWriter(app.contentResolver)
+    private val tempDir = app.cacheDir
     private val raRepo = RaRepository(File(app.filesDir, "ra"))
     private var raAccount: RaAccount? = raAccounts.load()
     private var raPlayersJob: Job? = null
@@ -196,6 +210,11 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<ClubState> = _state
 
     init {
+        // Which romhacks have patches (RetroAchievements' RAPatches), checked once a day.
+        viewModelScope.launch {
+            patchIndex = withContext(Dispatchers.IO) { raPatches.load() }
+            refreshPatchable()
+        }
         // Someone who added ROM folders before setup existed doesn't need it.
         if (!settings.setupDone && settings.sources.isNotEmpty()) settings.setupDone = true
         // Covers the catalogue download too: the first onResume, right after launch, then
@@ -435,6 +454,7 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
                 pick, PickState.MISSING,
                 message = "None of your ${result.searched} ${result.console.name} ROMs is a version RetroAchievements " +
                     "recognizes for this game. Any file name works; it's the contents that count.",
+                patchBase = patchBaseFor(pick, candidates),
             )
             is FindResult.NoHashList -> PickRow(
                 pick, PickState.MISSING,
@@ -697,6 +717,132 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
                     (row.message?.let { " - $it" } ?: ""))
             }
         }
+    }
+
+    // ── Romhack patching ─────────────────────────────────────────────────────
+
+    /** A base ROM in [games] that this pick (a romhack in RAPatches) can be made from, or null. */
+    private fun patchBaseFor(pick: ClubPick, games: List<Game>): Game? {
+        val patch = patchIndex[pick.gameId] ?: return null
+        return BaseRoms.candidates(patch.baseTitle, games) { it.fileName }.firstOrNull()
+    }
+
+    /** Marks Missing romhacks that can be made from a base ROM, once the patch list has loaded. */
+    private fun refreshPatchable() {
+        val catalogue = _state.value.catalogue ?: return
+        val games = scannedGames ?: return
+        fun update(row: PickRow): PickRow {
+            if (row.state != PickState.MISSING || row.patchBase != null) return row
+            val console = row.pick.console ?: return row
+            val candidates = games.filter { g -> catalogue.platform(g.platformId)?.let { PlatformConsoles.holds(it, console.id) } == true }
+            return patchBaseFor(row.pick, candidates)?.let { row.copy(patchBase = it) } ?: row
+        }
+        _state.update { s -> s.copy(rows = s.rows.map(::update), past = s.past.map(::update)) }
+    }
+
+    /**
+     * Makes a romhack from a base ROM: downloads its patch archive from RAPatches, applies each
+     * patch (newest version first) to each likely base ROM, and keeps the first result whose
+     * RetroAchievements hash is one RA lists for this hack, so achievements work. It's saved
+     * beside the base ROM (in a Hacks folder if there is one) and linked to the pick.
+     * [status] reports progress; [done] gets the message to show.
+     */
+    fun makeHack(row: PickRow, status: (String) -> Unit, done: (String) -> Unit) {
+        val catalogue = _state.value.catalogue ?: return done("The emulator catalogue isn't loaded yet.")
+        val console = row.pick.console ?: return done("Can't tell which console this hack is for.")
+        viewModelScope.launch {
+            val message = withContext(Dispatchers.IO) {
+                val patch = patchIndex[row.pick.gameId] ?: raPatches.find(row.pick.gameId)
+                    ?: return@withContext "RetroAchievements has no patch for this hack."
+                val games = (scannedGames ?: scanner.scan(settings.sources, catalogue).values.flatten().also { scannedGames = it })
+                    .filter { g -> catalogue.platform(g.platformId)?.let { PlatformConsoles.holds(it, console.id) } == true }
+                val bases = (listOfNotNull(row.patchBase) + BaseRoms.candidates(patch.baseTitle, games) { it.fileName })
+                    .distinctBy { it.key }.take(4)
+                if (bases.isEmpty()) return@withContext "No ${patch.baseTitle} ROM found to make it from."
+                val wanted = hashLibrary.hashesFor(console.id, row.pick.gameId)
+                    ?: return@withContext "Couldn't download RetroAchievements' list of ${console.name} ROMs. Connect to Wi-Fi and try again."
+
+                withContext(Dispatchers.Main) { status("Downloading the patch…") }
+                val archive = try { raPatches.download(patch) } catch (e: java.io.IOException) {
+                    return@withContext "Couldn't download the patch. Connect to Wi-Fi and try again."
+                }
+                val out = File(tempDir, "patched.tmp")
+                try {
+                    val patchFiles = RaPatchesRepository.patches(archive)
+                    if (patchFiles.isEmpty()) return@withContext "The patch archive has no patch this app can apply."
+                    withContext(Dispatchers.Main) { status("Patching…") }
+                    for (base in bases) {
+                        val source = sourceOf(base) ?: continue
+                        val (innerName, buffer) = source
+                        val crc by lazy { Patcher.crc32(buffer) }
+                        val ext = innerName.substringAfterLast('.', "bin")
+                        for (file in patchFiles) {
+                            val required = Patcher.requiredSourceCrc(file.format, file.bytes)
+                            if (required != null && required != crc) continue
+                            try {
+                                Patcher.apply(file.format, file.bytes, buffer, out)
+                            } catch (_: java.io.IOException) {
+                                continue
+                            }
+                            val name = file.name.substringBeforeLast('.') + "." + ext
+                            val hash = runCatching { RaHash.hash(console.id, FileRom(name, out)) }.getOrNull()
+                            if (hash == null || hash !in wanted) continue
+                            withContext(Dispatchers.Main) { status("Saving…") }
+                            val saved = romWriter.saveBeside(base, name, out)
+                            links.save(row.pick.gameId, saved.game)
+                            scannedGames = scannedGames?.plus(saved.game)
+                            val updated = found(catalogue, row.pick, saved.game)
+                            _state.update { s ->
+                                s.withRow(row.pick, updated).copy(
+                                    linkCount = links.count(),
+                                    cocoonTip = s.cocoonTip || (saved.inHacks && !settings.cocoonTipShown),
+                                )
+                            }
+                            return@withContext "Made ${row.pick.displayTitle} from ${base.fileName}" +
+                                (if (saved.inHacks) ", saved in Hacks." else ", saved next to it.")
+                        }
+                    }
+                    "None of the patches made a version RetroAchievements recognizes from your " +
+                        bases.joinToString(" or ") { it.fileName } + "."
+                } catch (e: java.io.IOException) {
+                    "Couldn't make it: ${e.message}"
+                } finally {
+                    archive.delete()
+                    out.delete()
+                }
+            }
+            done(message)
+        }
+    }
+
+    /** A base ROM's contents for patching: the file mapped into memory, or the ROM inside a zip/7z. */
+    private fun sourceOf(base: Game): Pair<String, java.nio.ByteBuffer>? {
+        val file = romFiles.open(base) ?: return null
+        RaHash.unwrap(file)?.let { (name, bytes) -> return name to java.nio.ByteBuffer.wrap(bytes) }
+        val channel = file.openChannel() ?: return null
+        return channel.use { ch ->
+            val buffer = if (ch is java.nio.channels.FileChannel) {
+                ch.map(java.nio.channels.FileChannel.MapMode.READ_ONLY, 0, ch.size())
+            } else {
+                val bytes = ByteArray(ch.size().toInt())
+                val bb = java.nio.ByteBuffer.wrap(bytes)
+                while (bb.hasRemaining()) if (ch.read(bb) < 0) break
+                java.nio.ByteBuffer.wrap(bytes)
+            }
+            base.fileName to buffer
+        }
+    }
+
+    /** A local file as a ROM, for hashing a patched ROM before it's saved. */
+    private class FileRom(override val name: String, private val file: File) : app.retrolauncher.club.RomFile {
+        override val parentName: String? = null
+        override fun open() = file.inputStream()
+        override fun openChannel(): java.nio.channels.SeekableByteChannel = java.io.RandomAccessFile(file, "r").channel
+    }
+
+    fun dismissCocoonTip() {
+        settings.cocoonTipShown = true
+        _state.update { it.copy(cocoonTip = false) }
     }
 
     // ── Marks ────────────────────────────────────────────────────────────────

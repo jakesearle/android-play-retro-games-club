@@ -423,3 +423,20 @@ fun UnrecognizedFileDialog(choice: UnrecognizedChoice, onChooseAnother: () -> Un
         }
     }
 }
+
+/**
+ * Shown once, after the first hack is saved in a Hacks folder: Cocoon keeps its settings to
+ * itself, so this app can't turn on its sub-folder option; it can only say where it is.
+ */
+@Composable
+fun CocoonTipDialog(onDismiss: () -> Unit) {
+    val first = rememberFirstFocus()
+    PadDialog(title = "Saved in the Hacks folder", onDismiss = onDismiss, focus = first, wide = true, hints = { PadHint("A", "OK") }) {
+        Message(
+            "The hack was saved in that console's Hacks folder. This app plays it from there. To see it in " +
+                "Cocoon as well, turn on Cocoon's option to show games in sub-folders for that console, in Cocoon's " +
+                "settings. (Other apps can't change Cocoon's settings, so it's up to you.)"
+        )
+        FocusRow(onClick = onDismiss, modifier = Modifier.focusRequester(first)) { f -> RowText("Got it", f) }
+    }
+}

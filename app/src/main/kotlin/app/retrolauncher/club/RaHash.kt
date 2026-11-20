@@ -308,6 +308,17 @@ object RaHash {
         }
     }
 
+    /**
+     * The ROM inside a .zip or .7z (the first file that looks like one), as (name, bytes); null
+     * for a file that isn't an archive. Used to patch a zipped base ROM.
+     */
+    @Throws(IOException::class)
+    fun unwrap(file: RomFile): Pair<String, ByteArray>? = when {
+        file.name.endsWith(".zip", ignoreCase = true) -> firstRomInZip(file)
+        file.name.endsWith(".7z", ignoreCase = true) -> firstRomIn7z(file)
+        else -> null
+    }
+
     private class BytesRom(override val name: String, override val parentName: String?, val bytes: ByteArray) : RomFile {
         override fun open(): InputStream = ByteArrayInputStream(bytes)
     }

@@ -37,6 +37,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // With the release key here, debug builds use it too, so they install over a release
+            // (and back) without wiping its data. Without it (CI), the debug key as usual.
+            signingConfigs.findByName("release")?.let { signingConfig = it }
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

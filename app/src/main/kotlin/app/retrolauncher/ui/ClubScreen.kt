@@ -355,6 +355,7 @@ fun ClubScreen(
             onDismiss = vm::dismissUnrecognized,
         )
     }
+    if (state.cocoonTip) CocoonTipDialog(onDismiss = vm::dismissCocoonTip)
     if (aboutOpen) AboutDialog(onOpenUrl = onOpenUrl, onDismiss = { aboutOpen = false })
     if (raOpen) {
         RaSignInDialog(vm, state.ra, onOpenUrl = onOpenUrl, showMessage = showMessage, onDismiss = { raOpen = false })
@@ -438,7 +439,8 @@ internal fun PickCard(card: Card, modifier: Modifier, onOpen: () -> Unit, onPlay
                         modifier = Modifier.weight(1f).padding(end = 8.dp),
                     )
                     // Ready is the norm, so it shows nothing; a problem shows its pill.
-                    if (row.state != PickState.READY) StatusChip(row.state)
+                    if (row.state == PickState.MISSING && row.patchBase != null) PatchChip()
+                    else if (row.state != PickState.READY) StatusChip(row.state)
                     if (completion == Completion.DNF) {
                         Text(
                             "DNF",
@@ -464,6 +466,18 @@ internal fun PickCard(card: Card, modifier: Modifier, onOpen: () -> Unit, onPlay
             }
         }
     }
+}
+
+/** A Missing romhack that can be made from a base ROM you have. */
+@Composable
+fun PatchChip() {
+    Text(
+        "Can patch",
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        color = Color(0xFF101114),
+        modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFF5BC0D6)).padding(horizontal = 10.dp, vertical = 3.dp),
+    )
 }
 
 @Composable
