@@ -61,7 +61,9 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
 - **App icon**, final **app name**, and final **application ID**. `app.retrolauncher` is a
   placeholder, and it can't change after people install without losing their settings.
 - **Signed release build** and a place for the APK (the repo is private), plus an in-app
-  "new version available" check.
+  "new version available" check. Release builds are already shrunk with R8 and sign
+  themselves once `keystore.properties` exists (see `keystore.properties.example`); what's
+  left is creating the key and checking a shrunk build all the way through on a device.
 - **"Add to Obtainium" button** at the top of this README, using Obtainium's badge and its
   `obtainium://add/<repo URL>` link (through Obtainium's web redirect, since GitHub won't
   link a custom scheme). Needs the repo public and the APK attached to GitHub releases, so
