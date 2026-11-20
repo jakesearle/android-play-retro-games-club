@@ -35,6 +35,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -141,6 +146,8 @@ fun ClubScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var raOpen by remember { mutableStateOf(false) }
     var aboutOpen by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     // The past-picks page. Kept here so it comes back as it was when its game view closes.
     var pastOpen by rememberSaveable { mutableStateOf(false) }
     var pastShown by rememberSaveable { mutableIntStateOf(PAST_BATCH) }
@@ -326,6 +333,16 @@ fun ClubScreen(
             onRequestAllFiles = { menuOpen = false; onRequestAllFiles() },
             onRetroAchievements = { menuOpen = false; raOpen = true },
             onAbout = { menuOpen = false; aboutOpen = true },
+            onShareReport = {
+                menuOpen = false
+                scope.launch {
+                    val file = runCatching {
+                        withContext(Dispatchers.IO) { app.retrolauncher.support.BugReport.write(context, vm.reportStatus()) }
+                    }.getOrNull()
+                    if (file == null) showMessage("Couldn't write the report.")
+                    else runCatching { app.retrolauncher.support.BugReport.share(context, file) }.onFailure { showMessage("No app to share it with.") }
+                }
+            },
             showMessage = showMessage,
             onDismiss = { menuOpen = false },
         )

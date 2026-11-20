@@ -674,6 +674,24 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         refreshRa()
     }
 
+    /** A plain summary of what the app sees, for a bug report: no keys, folder names only. */
+    fun reportStatus(): String {
+        val s = _state.value
+        return buildString {
+            appendLine("Club: ${s.status ?: "loaded"}; ${s.rows.size} current picks, ${s.past.size} past")
+            appendLine("Emulator catalogue: ${if (s.catalogue != null) "loaded" else "not loaded"}")
+            appendLine("ROM folders: ${s.sources.size} (${s.sources.joinToString { it.label }})")
+            appendLine("All-files access: ${s.hasAllFilesAccess}; linked ROMs: ${s.linkCount}")
+            appendLine("RetroAchievements: ${if (s.ra.user != null) "signed in" else "not signed in"}${if (s.ra.keyRefused) " (key refused)" else ""}")
+            for (row in s.rows) {
+                val player = row.game?.let { playerFor(it)?.id }
+                appendLine("- ${row.pick.event}: ${row.pick.title} [${row.state}]" +
+                    (row.game?.let { " ${it.fileName}" } ?: "") + (player?.let { " via $it" } ?: "") +
+                    (row.message?.let { " - $it" } ?: ""))
+            }
+        }
+    }
+
     // ── Marks ────────────────────────────────────────────────────────────────
 
     private fun loadMarks(): Map<Int, PickMark> = settings.marks().mapNotNull { (id, name) ->

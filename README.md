@@ -67,9 +67,6 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
 - **More disc consoles.** Prioritise the ones in the club's history (Saturn, Dreamcast,
   Sega CD, PS2 DVD images as CHD…).
 
-**Nice to have**
-- **Share logs** from Settings for bug reports (Discord users can't run adb).
-
 ## Later
 
 Ideas we've looked into and set aside for now.

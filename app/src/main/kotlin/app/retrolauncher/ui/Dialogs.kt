@@ -191,6 +191,7 @@ fun MenuDialog(
     onRequestAllFiles: () -> Unit,
     onRetroAchievements: () -> Unit,
     onAbout: () -> Unit,
+    onShareReport: () -> Unit,
     showMessage: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -268,6 +269,11 @@ fun MenuDialog(
             item {
                 FocusRow(onClick = { onDismiss(); vm.startSetup() }) { f ->
                     RowText("Set up again", f, "Walks through choosing ROM folders and emulators.")
+                }
+            }
+            item {
+                FocusRow(onClick = onShareReport) { f ->
+                    RowText("Share a bug report…", f, "A text file of the app's status and recent log, to send on Discord. No keys or passwords.")
                 }
             }
             item {
