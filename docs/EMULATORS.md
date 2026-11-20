@@ -541,6 +541,14 @@ too, and NextUI/MinUI names are read by their tag, so `Super Nintendo Entertainm
 
 ## Notes and gaps
 
+- **Joey64 is added by the app.** [Joey64](https://github.com/JoeysRetroHandhelds/joey64)
+  (`com.joeysretro.joey64`, an N64 emulator on a Mupen64Plus-Next fork, GPL-3.0) isn't in
+  the Cocoon catalogue or the pack yet, so `ExtraPlayers` adds it to the N64 platform, first,
+  making it the default N64 emulator whenever it's installed (a choice saved for a game or for
+  N64 still wins). It's launched with a `content://` URI as VIEW data. If the catalogue lists
+  the package later, its entry is used instead, still first. (The catalogue's
+  "Mupen64Plus (Joey's Fork)" is a different app, `org.mupen64plusae.v3.alpha.debug`.)
+
 - **RA-supported Android apps outside the pack.** RetroAchievements lists
   Pizza Boy A/C/SC (GBA, GB/GBC, Genesis/Master System/Game Gear) and
   DroidArcadia (Arcadia 2001, Elektor, Interton VC 4000). Neither is in the pack.

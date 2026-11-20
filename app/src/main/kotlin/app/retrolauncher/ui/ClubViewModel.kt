@@ -25,6 +25,7 @@ import app.retrolauncher.club.HashLibrary
 import app.retrolauncher.club.PlatformConsoles
 import app.retrolauncher.club.RaConsoles
 import app.retrolauncher.club.RomLinks
+import app.retrolauncher.launch.ExtraPlayers
 import app.retrolauncher.launch.GameLauncher
 import app.retrolauncher.launch.PlayerChooser
 import app.retrolauncher.launch.PlayerOption
@@ -95,6 +96,8 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         stat = romFiles::stat,
     )
 
+    /** The catalogue as downloaded, before [ExtraPlayers] are added: what "has it changed" compares. */
+    private var sourceCatalogue: Catalogue? = null
     private var picks: List<ClubPick> = emptyList()
     /** The club's own picks, without debug test picks: what a re-check compares against. */
     private var clubPicks: List<ClubPick> = emptyList()
@@ -111,12 +114,16 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         // Covers the catalogue download too: the first onResume, right after launch, then
         // doesn't start a second club load beside this one.
         clubJob = viewModelScope.launch {
-            catalogueRepo.loadCached()?.let { cached -> _state.update { it.copy(catalogue = cached.catalogue) } }
+            catalogueRepo.loadCached()?.let { cached ->
+                sourceCatalogue = cached.catalogue
+                _state.update { it.copy(catalogue = ExtraPlayers.addTo(cached.catalogue)) }
+            }
             loadClub(force = false)
             try {
                 val loaded = catalogueRepo.load()
-                if (loaded.catalogue !== _state.value.catalogue) {
-                    _state.update { it.copy(catalogue = loaded.catalogue) }
+                if (loaded.catalogue !== sourceCatalogue) {
+                    sourceCatalogue = loaded.catalogue
+                    _state.update { it.copy(catalogue = ExtraPlayers.addTo(loaded.catalogue)) }
                     checkPicks()
                 }
             } catch (e: Exception) {

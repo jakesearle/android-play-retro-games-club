@@ -169,3 +169,65 @@ class EsDeFoldersTest {
         assertEquals(emptySet<String>(), esde.keys.intersect(other.keys))
     }
 }
+
+class ExtraPlayersTest {
+    private fun s(v: String) = JsonPrimitive(v).toString()
+    private val retroarch = "-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n-e ROM {file.path}"
+
+    private fun catalogue(extraN64: String = "") = Catalogue.parse(
+        """{"format":1,"platforms":[
+          {"id":"n64","name":"Nintendo 64","players":[
+            {"id":"n64.ra64.mupen","name":"RetroArch mupen","acceptedFilenameRegex":${s("^(.*)\\.(?:z64|n64)$")},"amStartArguments":${s(retroarch)}}
+            $extraN64
+          ]},
+          {"id":"gba","name":"Game Boy Advance","players":[]}
+        ]}"""
+    )
+
+    @Test
+    fun `Joey64 is added to N64, first, so it's the default`() {
+        val c = app.retrolauncher.launch.ExtraPlayers.addTo(catalogue())
+        val n64 = c.platform("n64")!!
+        assertEquals(listOf("n64.com.joeysretro.joey64", "n64.ra64.mupen"), n64.players.map { it.id })
+        assertEquals(0, c.platform("gba")!!.players.size)
+        assertEquals("com.joeysretro.joey64", c.packageName(n64.players[0]))
+        // Its file types, including 64DD disks; matching ignores case.
+        val joey = n64.players[0]
+        assertEquals(true, c.playerAccepts(joey, "Super Mario 64 (USA).Z64"))
+        assertEquals(true, c.playerAccepts(joey, "F-Zero X Expansion Kit (Japan).ndd"))
+        assertEquals(false, c.playerAccepts(joey, "Golden Sun.gba"))
+    }
+
+    @Test
+    fun `Joey64 launches with a content URI and a read grant`() {
+        val cmd = app.retrolauncher.catalogue.am.AmStartArguments.parse(app.retrolauncher.launch.ExtraPlayers.JOEY64.amStartArguments)
+        assertEquals(emptyList<String>(), cmd.warnings)
+        assertEquals("com.joeysretro.joey64.MainActivity", cmd.className)
+        val uri = "content://com.android.externalstorage.documents/tree/x/document/primary%3AROMs%2Fn64%2FSM64.z64"
+        val spec = (cmd.resolve(app.retrolauncher.catalogue.am.GameFile(path = "/storage/emulated/0/ROMs/n64/SM64.z64", uri = uri))
+            as app.retrolauncher.catalogue.am.ResolveResult.Success).spec
+        assertEquals(uri, spec.data)
+        assertEquals("application/octet-stream", spec.mimeType)
+        assertEquals(listOf(uri), spec.grantUris)
+    }
+
+    @Test
+    fun `the catalogue's own Joey64 entry wins, and is still put first`() {
+        val own = """,{"id":"n64.joey64","name":"Joey64 (catalogue)","amStartArguments":${s("-n com.joeysretro.joey64/.MainActivity\n-d {file.uri}")}}"""
+        val c = app.retrolauncher.launch.ExtraPlayers.addTo(catalogue(own))
+        assertEquals(listOf("n64.joey64", "n64.ra64.mupen"), c.platform("n64")!!.players.map { it.id })
+    }
+
+    @Test
+    fun `Joey64 is the default only when installed, and a saved choice still wins`() {
+        val c = app.retrolauncher.launch.ExtraPlayers.addTo(catalogue())
+        val n64 = c.platform("n64")!!
+        val game = app.retrolauncher.library.Game("k", "n64", "SM64.z64", "SM64", "/roms/n64/SM64.z64", "content://x/doc")
+        fun pick(choices: app.retrolauncher.launch.Choices, installed: (String) -> Boolean) =
+            app.retrolauncher.launch.PlayerChooser.pick(c, n64, game, choices, installed)?.id
+        val none = app.retrolauncher.launch.Choices(null, null)
+        assertEquals("n64.com.joeysretro.joey64", pick(none) { true })
+        assertEquals("n64.ra64.mupen", pick(none) { it != "com.joeysretro.joey64" })
+        assertEquals("n64.ra64.mupen", pick(app.retrolauncher.launch.Choices("n64.ra64.mupen", null)) { true })
+    }
+}
