@@ -15,7 +15,7 @@ import java.util.zip.Deflater
 import kotlin.random.Random
 
 /** Files in one folder, with random access and siblings, as ROM folders give them. */
-private class Folder(val files: Map<String, ByteArray>) {
+internal class Folder(val files: Map<String, ByteArray>) {
     fun rom(name: String): RomFile = object : RomFile {
         override val name = name
         override val parentName: String? = null
@@ -25,11 +25,11 @@ private class Folder(val files: Map<String, ByteArray>) {
     }
 }
 
-private fun md5(vararg parts: ByteArray) =
+internal fun md5(vararg parts: ByteArray) =
     MessageDigest.getInstance("MD5").apply { parts.forEach(::update) }.digest().joinToString("") { "%02x".format(it) }
 
 /** An ISO 9660 directory record. */
-private fun record(name: String, sector: Int, size: Int): ByteArray {
+internal fun record(name: String, sector: Int, size: Int): ByteArray {
     val n = name.toByteArray(Charsets.ISO_8859_1)
     val length = 33 + n.size + (if (n.size % 2 == 0) 1 else 0)
     return ByteArray(length).also { r ->
@@ -45,7 +45,7 @@ private fun record(name: String, sector: Int, size: Int): ByteArray {
  * A minimal ISO 9660 image of 2048-byte sectors: [sectors] are placed by relative sector; the
  * root directory is at [root] (an absolute sector, as on the disc, so [base] is subtracted).
  */
-private fun iso(count: Int, root: Int, base: Int = 0, sectors: Map<Int, ByteArray>): ByteArray {
+internal fun iso(count: Int, root: Int, base: Int = 0, sectors: Map<Int, ByteArray>): ByteArray {
     val image = ByteArray(count * 2048)
     val pvd = ByteArray(2048)
     pvd[128] = 0; pvd[129] = 8 // logical block size 2048
@@ -55,7 +55,7 @@ private fun iso(count: Int, root: Int, base: Int = 0, sectors: Map<Int, ByteArra
     return image
 }
 
-private fun dir(vararg records: ByteArray) = records.fold(ByteArray(0)) { acc, r -> acc + r }
+internal fun dir(vararg records: ByteArray) = records.fold(ByteArray(0)) { acc, r -> acc + r }
 
 /** Raw 2352-byte MODE1 sectors (sync, header, 2048 bytes of data, EDC/ECC left zero). */
 private fun raw(data: ByteArray): ByteArray {
@@ -67,6 +67,20 @@ private fun raw(data: ByteArray): ByteArray {
     }
     return out
 }
+
+internal val PSP_SFO = Random(5).nextBytes(1200)
+internal val PSP_EBOOT = Random(6).nextBytes(5000)
+
+/** A PSP disc image: PSP_GAME/PARAM.SFO and PSP_GAME/SYSDIR/EBOOT.BIN, 40 sectors. */
+internal fun pspIso() = iso(
+    count = 40, root = 20,
+    sectors = mapOf(
+        20 to dir(record("PSP_GAME", 21, 2048)),
+        21 to dir(record("PARAM.SFO;1", 25, PSP_SFO.size), record("SYSDIR", 22, 2048)),
+        22 to dir(record("EBOOT.BIN;1", 30, PSP_EBOOT.size)),
+        25 to PSP_SFO, 30 to PSP_EBOOT,
+    ),
+)
 
 class DiscConsolesTest {
     @Test
@@ -119,17 +133,10 @@ class DiscConsolesTest {
         assertEquals(md5(meta.copyOf(256), boot), RaHash.hash(RaConsoles.DREAMCAST, folder.rom("Game.gdi")))
     }
 
-    private val sfo = Random(5).nextBytes(1200)
-    private val eboot = Random(6).nextBytes(5000)
-    private val pspIso = iso(
-        count = 40, root = 20,
-        sectors = mapOf(
-            20 to dir(record("PSP_GAME", 21, 2048)),
-            21 to dir(record("PARAM.SFO;1", 25, sfo.size), record("SYSDIR", 22, 2048)),
-            22 to dir(record("EBOOT.BIN;1", 30, eboot.size)),
-            25 to sfo, 30 to eboot,
-        ),
-    )
+    private val sfo = PSP_SFO
+    private val eboot = PSP_EBOOT
+    private val pspIso = pspIso()
+
 
     @Test
     fun `PSP hashes PARAM_SFO then EBOOT_BIN, from an ISO or a CSO`() {

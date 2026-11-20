@@ -62,10 +62,17 @@ object CdImages {
 
     private fun chdTrack(channel: SeekableByteChannel, choice: TrackChoice): CdTrack? {
         val chd = Chd(channel)
-        // No CD tracks and 2048-byte units: a DVD image (PS2, PSP), whose codecs aren't all supported.
-        if (chd.tracks.isEmpty() && chd.unitBytes != Chd.FRAME_SIZE) {
-            chd.close()
-            throw app.retrolauncher.club.UnreadableFormatException("DVD CHD")
+        // No CD tracks and 2048-byte units: a DVD image (PS2, PSP), plain 2048-byte sectors.
+        if (chd.tracks.isEmpty() && chd.unitBytes == DVD_SECTOR) {
+            if (!isFirst(choice)) return null.also { chd.close() }
+            return object : CdTrack {
+                override fun read(lba: Int, size: Int): ByteArray {
+                    if (lba < 0 || lba.toLong() * DVD_SECTOR >= chd.logicalSize) return ByteArray(0)
+                    return chd.sector(lba).copyOf(minOf(size, DVD_SECTOR))
+                }
+
+                override fun close() = chd.close()
+            }
         }
         val tracks = chd.tracks.ifEmpty { listOf(Chd.Track(1, "MODE1_RAW", 0, 0, false, 0)) }
         val track = choose(tracks, choice, { it.number }, { userDataOffset(it.type) != null })
@@ -217,6 +224,8 @@ object CdImages {
 
         override fun close() = channel.close()
     }
+
+    private const val DVD_SECTOR = 2048
 
     /** Where a GD-ROM's high-density area starts. */
     const val GD_HIGH_DENSITY = 45000

@@ -20,6 +20,8 @@ class Chd(private val channel: SeekableByteChannel) : Closeable {
     val hunkBytes: Int
     val unitBytes: Int
     private val logicalBytes: Long
+    /** The uncompressed size of the image. */
+    val logicalSize: Long get() = logicalBytes
     private val codecs = IntArray(4)
     private val mapOffset: Long
     private val metaOffset: Long
@@ -167,15 +169,18 @@ class Chd(private val channel: SeekableByteChannel) : Closeable {
     }
 
     private fun decompress(codec: Int, src: ByteArray): ByteArray = when (codec) {
-        CD_LZMA, CD_ZLIB -> cdDecompress(src, lzma = codec == CD_LZMA)
+        CD_LZMA, CD_ZLIB, CD_ZSTD -> cdDecompress(src, codec)
         CD_FLAC -> cdFlac(src)
         LZMA -> lzma(src, 0, src.size, hunkBytes)
         ZLIB -> inflate(src, 0, src.size, hunkBytes)
+        ZSTD -> zstd(src, 0, src.size, hunkBytes)
+        HUFF -> huff(src, hunkBytes)
+        FLAC -> rawFlac(src, hunkBytes)
         else -> throw ChdException("CHD codec ${fourCc(codec)} isn't supported")
     }
 
-    /** cdlz/cdzl: an ECC bitmap, the compressed sector data, then Deflate-compressed subcode. */
-    private fun cdDecompress(src: ByteArray, lzma: Boolean): ByteArray {
+    /** cdlz/cdzl/cdzs: an ECC bitmap, the compressed sector data, then the compressed subcode. */
+    private fun cdDecompress(src: ByteArray, codec: Int): ByteArray {
         val frames = hunkBytes / FRAME_SIZE
         val lengthBytes = if (hunkBytes < 65536) 2 else 3
         val eccBytes = (frames + 7) / 8
@@ -183,9 +188,15 @@ class Chd(private val channel: SeekableByteChannel) : Closeable {
         var baseLength = ((src[eccBytes].toInt() and 0xFF) shl 8) or (src[eccBytes + 1].toInt() and 0xFF)
         if (lengthBytes > 2) baseLength = (baseLength shl 8) or (src[eccBytes + 2].toInt() and 0xFF)
         val sectors = frames * SECTOR_SIZE
-        val base = if (lzma) lzma(src, headerBytes, baseLength, sectors) else inflate(src, headerBytes, baseLength, sectors)
+        val base = when (codec) {
+            CD_LZMA -> lzma(src, headerBytes, baseLength, sectors)
+            CD_ZSTD -> zstd(src, headerBytes, baseLength, sectors)
+            else -> inflate(src, headerBytes, baseLength, sectors)
+        }
         val subStart = headerBytes + baseLength
-        val sub = inflate(src, subStart, src.size - subStart, frames * SUBCODE_SIZE)
+        // cdlz and cdzl compress the subcode with Deflate; cdzs with Zstandard.
+        val sub = if (codec == CD_ZSTD) zstd(src, subStart, src.size - subStart, frames * SUBCODE_SIZE)
+            else inflate(src, subStart, src.size - subStart, frames * SUBCODE_SIZE)
         val out = ByteArray(hunkBytes)
         for (f in 0 until frames) {
             System.arraycopy(base, f * SECTOR_SIZE, out, f * FRAME_SIZE, SECTOR_SIZE)
@@ -303,6 +314,44 @@ class Chd(private val channel: SeekableByteChannel) : Closeable {
     override fun close() = channel.close()
 
     companion object {
+        /** huff: a Huffman tree over byte values (Huffman-coded itself), then every byte of the hunk. */
+        internal fun huff(src: ByteArray, hunkBytes: Int): ByteArray {
+            val br = BitReader(src)
+            val tree = Huffman(256, 16)
+            tree.importTreeHuffman(br)
+            return ByteArray(hunkBytes) { tree.decode(br).toByte() }
+        }
+
+        /**
+         * flac (DVD and hard disk images): one byte, 'L' or 'B', for the byte order the data's
+         * 16-bit samples are in, then stereo FLAC frames with no stream header, as for cdfl.
+         */
+        internal fun rawFlac(src: ByteArray, hunkBytes: Int): ByteArray {
+            val little = when (src.firstOrNull()?.toInt()?.toChar()) {
+                'L' -> true
+                'B' -> false
+                else -> throw ChdException("Bad CHD FLAC hunk")
+            }
+            var blockSize = hunkBytes / 4
+            while (blockSize > 2048) blockSize /= 2
+            val (out, _) = Flac.decodeCdFrames(src, 1, src.size, hunkBytes / 4, blockSize)
+            if (little) for (i in 0 until out.size - 1 step 2) { val t = out[i]; out[i] = out[i + 1]; out[i + 1] = t }
+            return out
+        }
+
+        internal fun zstd(src: ByteArray, offset: Int, length: Int, outSize: Int): ByteArray {
+            val out = ByteArray(outSize)
+            com.github.luben.zstd.ZstdInputStream(java.io.ByteArrayInputStream(src, offset, length)).use { s ->
+                var got = 0
+                while (got < outSize) {
+                    val n = s.read(out, got, outSize - got)
+                    if (n < 0) break
+                    got += n
+                }
+            }
+            return out
+        }
+
         const val SECTOR_SIZE = 2352
         const val SUBCODE_SIZE = 96
         const val FRAME_SIZE = SECTOR_SIZE + SUBCODE_SIZE
@@ -324,6 +373,10 @@ class Chd(private val channel: SeekableByteChannel) : Closeable {
         private val CD_LZMA = tag("cdlz")
         private val CD_ZLIB = tag("cdzl")
         private val CD_FLAC = tag("cdfl")
+        private val CD_ZSTD = tag("cdzs")
+        private val ZSTD = tag("zstd")
+        private val HUFF = tag("huff")
+        private val FLAC = tag("flac")
         private val LZMA = tag("lzma")
         private val ZLIB = tag("zlib")
         private val CHT2 = tag("CHT2")

@@ -59,8 +59,8 @@ internal class BitReader(private val data: ByteArray, start: Int = 0, private va
 }
 
 /**
- * Canonical Huffman decoder, ported from libchdr's `huffman.c` (BSD-3-Clause). Only the
- * RLE-encoded tree import is needed, for the CHD v5 hunk map.
+ * Canonical Huffman decoder, ported from libchdr's `huffman.c` (BSD-3-Clause): the RLE-encoded
+ * tree import for the CHD v5 hunk map, and the Huffman-encoded one for the `huff` codec.
  */
 internal class Huffman(private val numCodes: Int, private val maxBits: Int) {
     private val bitsOf = IntArray(numCodes)
@@ -89,6 +89,47 @@ internal class Huffman(private val numCodes: Int, private val maxBits: Int) {
                         bitsOf[cur++] = nodeBits
                     }
                 }
+            }
+        }
+        assignCanonicalCodes()
+        buildLookup()
+    }
+
+    /**
+     * Reads a tree stored as code lengths that are themselves Huffman-coded with a small
+     * 24-symbol tree (libchdr's `huffman_import_tree_huffman`), as the `huff` codec stores it.
+     */
+    fun importTreeHuffman(br: BitReader) {
+        val small = Huffman(24, 6)
+        small.bitsOf[0] = br.read(3)
+        val start = br.read(3) + 1
+        var count = 0
+        for (index in 1 until 24) {
+            if (index < start || count == 7) {
+                small.bitsOf[index] = 0
+            } else {
+                count = br.read(3)
+                small.bitsOf[index] = if (count == 7) 0 else count
+            }
+        }
+        small.assignCanonicalCodes()
+        small.buildLookup()
+
+        var rleFullBits = 0
+        var temp = numCodes - 9
+        while (temp != 0) { temp = temp shr 1; rleFullBits++ }
+
+        var cur = 0
+        var last = 0
+        while (cur < numCodes) {
+            val value = small.decode(br)
+            if (value != 0) {
+                last = value - 1
+                bitsOf[cur++] = last
+            } else {
+                var run = br.read(3) + 2
+                if (run == 7 + 2) run += br.read(rleFullBits)
+                while (run != 0 && cur < numCodes) { bitsOf[cur++] = last; run-- }
             }
         }
         assignCanonicalCodes()
