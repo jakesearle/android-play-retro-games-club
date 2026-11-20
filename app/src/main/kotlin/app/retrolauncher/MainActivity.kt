@@ -1,6 +1,7 @@
 package app.retrolauncher
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -120,7 +121,11 @@ class MainActivity : ComponentActivity() {
      * At launch the ComposeView doesn't have Android view focus yet. A D-pad press would get
      * it by focus search, but a face button (A, Start, ...) would be dropped. Make sure the
      * content has focus before any key is dispatched.
+     *
+     * Lint flags this as RestrictedApi because ComponentActivity's own override is marked
+     * restricted, but overriding Activity.dispatchKeyEvent is public, ordinary Android.
      */
+    @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val content = findViewById<ViewGroup>(android.R.id.content)?.getChildAt(0)
         if (content != null && !content.hasFocus()) content.requestFocus()
