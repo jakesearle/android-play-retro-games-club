@@ -62,6 +62,11 @@ object CdImages {
 
     private fun chdTrack(channel: SeekableByteChannel, choice: TrackChoice): CdTrack? {
         val chd = Chd(channel)
+        // No CD tracks and 2048-byte units: a DVD image (PS2, PSP), whose codecs aren't all supported.
+        if (chd.tracks.isEmpty() && chd.unitBytes != Chd.FRAME_SIZE) {
+            chd.close()
+            throw app.retrolauncher.club.UnreadableFormatException("DVD CHD")
+        }
         val tracks = chd.tracks.ifEmpty { listOf(Chd.Track(1, "MODE1_RAW", 0, 0, false, 0)) }
         val track = choose(tracks, choice, { it.number }, { userDataOffset(it.type) != null })
             ?: return null.also { chd.close() }

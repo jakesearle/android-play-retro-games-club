@@ -440,6 +440,13 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
                 pick, PickState.MISSING,
                 message = "Couldn't download RetroAchievements' list of ${result.console.name} ROMs. Connect to Wi-Fi and refresh.",
             )
+            is FindResult.CantCheck -> PickRow(
+                pick, PickState.MISSING,
+                message = (if (result.count == 1) "1 of your ${result.console.name} games is a ${result.formats.joinToString("/")} file"
+                    else "${result.count} of your ${result.console.name} games are ${result.formats.joinToString("/")} files") +
+                    ", which can't be checked against RetroAchievements yet, so this game can't be found automatically. " +
+                    "Choose its ROM file once: it's used without a check and remembered.",
+            )
             is FindResult.Unsupported -> PickRow(
                 pick, PickState.MISSING,
                 message = "${result.console.name} games can't be matched automatically yet. Choose the ROM file once and it's remembered.",

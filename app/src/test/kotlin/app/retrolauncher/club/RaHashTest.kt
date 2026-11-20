@@ -195,6 +195,20 @@ class ClubFinderTest {
     }
 
     @Test
+    fun `compressed GameCube images are reported as unreadable, not as the wrong version`() {
+        val gc = pick.copy(title = "The Legend of Zelda: The Wind Waker (GC)")
+        files["Wind Waker.rvz"] = Rom("Wind Waker.rvz", otherRom)
+        val rvz = Game("/roms/gc/Wind Waker.rvz", "gc", "Wind Waker.rvz", "Wind Waker", "/roms/gc/Wind Waker.rvz", null, 10, 1)
+        val result = finder().find(gc, listOf(rvz)) as FindResult.CantCheck
+        assertEquals(setOf("RVZ"), result.formats)
+        assertEquals(1, result.count)
+        // Chosen by hand, it's accepted without a check, as before GameCube matching existed.
+        val console = RaConsoles.Console(RaConsoles.GAMECUBE, "GC", "GameCube")
+        val library = HashLibrary(File(tmp.root, "hashlib2"), download = { """{"Success":true,"MD5List":{"abc":1}}""" })
+        assertEquals(ClubFinder.Verdict.NotCheckable, ClubFinder.verifyChosen(library, console, 1, Rom("Wind Waker.rvz", otherRom)))
+    }
+
+    @Test
     fun `duplicates make the player choose`() {
         val r = finder().find(pick, listOf(game("a.gba", gameRom), game("b.gba", gameRom))) as FindResult.Found
         assertEquals(2, r.matches.size)

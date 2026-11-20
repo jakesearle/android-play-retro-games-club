@@ -58,6 +58,12 @@ import java.util.zip.ZipInputStream
 import org.apache.commons.compress.archivers.sevenz.SevenZFile
 
 /** A ROM file to hash, from a raw path or a `content://` document. */
+/**
+ * The file is in a format the app can't read (compressed GameCube images, DVD-type CHDs), so
+ * whether it's a recognised version can't be checked, which is different from "it isn't".
+ */
+class UnreadableFormatException(val format: String) : IOException("$format files can't be checked yet")
+
 interface RomFile {
     val name: String
     /** The folder the file is in, for arcade subsystem folders; may be null. */
@@ -112,6 +118,9 @@ object RaHash {
         RaConsoles.PLAYSTATION, RaConsoles.PLAYSTATION_2, RaConsoles.SEGA_CD, RaConsoles.SATURN,
         RaConsoles.PC_ENGINE_CD, RaConsoles.DREAMCAST, RaConsoles.PSP, RaConsoles.GAMECUBE,
     )
+    /** Compressed GameCube images (Dolphin's own formats), which can't be read yet. */
+    private val COMPRESSED_GAMECUBE = setOf("rvz", "gcz", "wia", "wbfs", "ciso")
+
     private val DISC_IMAGES = setOf("chd", "cue", "iso", "bin", "img", "m3u", "gdi", "cso", "gcm", "pbp")
 
     fun supports(consoleId: Int): Boolean =
@@ -125,6 +134,8 @@ object RaHash {
     @Throws(IOException::class)
     fun hash(consoleId: Int, file: RomFile): String? {
         if (!supports(consoleId)) return null
+        val ext = file.name.substringAfterLast('.', "").lowercase()
+        if (consoleId == RaConsoles.GAMECUBE && ext in COMPRESSED_GAMECUBE) throw UnreadableFormatException(ext.uppercase())
         if (consoleId == ARCADE) return arcade(file)
         if (consoleId in DISC) return disc(consoleId, file)
         if (file.name.endsWith(".zip", ignoreCase = true)) {

@@ -189,6 +189,8 @@ sealed interface FindResult {
     data class NoHashList(val console: RaConsoles.Console) : FindResult
     /** Disc-based console: can't be matched by hash, so the user picks the file. */
     data class Unsupported(val console: RaConsoles.Console) : FindResult
+    /** Nothing matched, but some candidates are in a format that can't be read ([formats], e.g. "RVZ"). */
+    data class CantCheck(val console: RaConsoles.Console, val count: Int, val formats: Set<String>) : FindResult
 }
 
 /**
@@ -232,18 +234,27 @@ class ClubFinder(
         val ordered = discAware(candidates.filterNot { RaHash.isIgnored(it.fileName) })
             .sortedWith(compareBy<Game> { it.extension == "m3u" }.thenByDescending { score(titleWords, it.fileName) })
         val matches = mutableListOf<Game>()
+        val unreadable = mutableListOf<String>()
         for ((index, game) in ordered.withIndex()) {
             if (cancelled()) break
             // A playlist only counts if none of the discs it lists matched on their own.
             if (game.extension == "m3u" && matches.isNotEmpty()) continue
             val hash = hashCache.get(console.id, game) ?: try {
                 open(game)?.let { RaHash.hash(console.id, it) }?.also { hashCache.put(console.id, game, it) }
+            } catch (e: UnreadableFormatException) {
+                unreadable += e.format
+                null
             } catch (_: IOException) {
                 null
             }.also { progress(index + 1, ordered.size) }
             if (hash != null && hash in wanted) matches += game
         }
-        return if (matches.isNotEmpty()) FindResult.Found(matches, linked = false) else FindResult.NotFound(console, ordered.size)
+        return when {
+            matches.isNotEmpty() -> FindResult.Found(matches, linked = false)
+            // The game may well be one of the files that couldn't be read: say so, not "not found".
+            unreadable.isNotEmpty() -> FindResult.CantCheck(console, unreadable.size, unreadable.toSet())
+            else -> FindResult.NotFound(console, ordered.size)
+        }
     }
 
     /** The linked ROM, if it's unchanged: from the scan, or (for a file picked by hand) by stat. */
@@ -297,6 +308,8 @@ class ClubFinder(
             val wanted = hashLibrary.hashesFor(console.id, gameId) ?: return Verdict.NoHashList
             val hash = try {
                 RaHash.hash(console.id, file)
+            } catch (_: UnreadableFormatException) {
+                return Verdict.NotCheckable // can't be checked, as for consoles with no hash yet
             } catch (e: IOException) {
                 return Verdict.Unreadable(e.message)
             }
