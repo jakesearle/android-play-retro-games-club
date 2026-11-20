@@ -49,6 +49,7 @@ import app.retrolauncher.club.RaConsoles.ZX_SPECTRUM
 import app.retrolauncher.club.disc.CdImages
 import app.retrolauncher.club.disc.DiscHash
 import app.retrolauncher.club.disc.GameCube
+import app.retrolauncher.club.disc.Rvz
 import app.retrolauncher.club.disc.TrackChoice
 import java.io.ByteArrayInputStream
 import java.io.IOException
@@ -118,10 +119,10 @@ object RaHash {
         RaConsoles.PLAYSTATION, RaConsoles.PLAYSTATION_2, RaConsoles.SEGA_CD, RaConsoles.SATURN,
         RaConsoles.PC_ENGINE_CD, RaConsoles.DREAMCAST, RaConsoles.PSP, RaConsoles.GAMECUBE,
     )
-    /** Compressed GameCube images (Dolphin's own formats), which can't be read yet. */
-    private val COMPRESSED_GAMECUBE = setOf("rvz", "gcz", "wia", "wbfs", "ciso")
+    /** Compressed GameCube images that can't be read yet (RVZ and WIA can). */
+    private val COMPRESSED_GAMECUBE = setOf("gcz", "wbfs", "ciso")
 
-    private val DISC_IMAGES = setOf("chd", "cue", "iso", "bin", "img", "m3u", "gdi", "cso", "gcm", "pbp")
+    private val DISC_IMAGES = setOf("chd", "cue", "iso", "bin", "img", "m3u", "gdi", "cso", "gcm", "pbp", "rvz", "wia")
 
     fun supports(consoleId: Int): Boolean =
         consoleId in WHOLE_FILE || consoleId in BUFFERED || consoleId == NINTENDO_64 ||
@@ -162,7 +163,12 @@ object RaHash {
         if (ext !in DISC_IMAGES) return null
         return when (consoleId) {
             // A plain disc image, read directly (no CD sectors): compressed RVZ/GCZ aren't readable.
-            RaConsoles.GAMECUBE -> if (ext == "iso" || ext == "gcm") file.openChannel()?.use { GameCube.hash(it) } else null
+            RaConsoles.GAMECUBE -> when (ext) {
+                "iso", "gcm" -> file.openChannel()?.use { GameCube.hash(it) }
+                // Dolphin's compressed formats, read as the plain disc.
+                "rvz", "wia" -> file.openChannel()?.let { Rvz(it) }?.use { GameCube.hash(it) }
+                else -> null
+            }
             // A PBP bundles the game's files; rcheevos hashes all of it.
             RaConsoles.PSP -> if (ext == "pbp") file.open().use { md5(it, MAX_BUFFER.toLong()) }
                 else CdImages.openFirstTrack(file)?.use { DiscHash.psp(it) }

@@ -197,15 +197,15 @@ class ClubFinderTest {
     @Test
     fun `compressed GameCube images are reported as unreadable, not as the wrong version`() {
         val gc = pick.copy(title = "The Legend of Zelda: The Wind Waker (GC)")
-        files["Wind Waker.rvz"] = Rom("Wind Waker.rvz", otherRom)
-        val rvz = Game("/roms/gc/Wind Waker.rvz", "gc", "Wind Waker.rvz", "Wind Waker", "/roms/gc/Wind Waker.rvz", null, 10, 1)
-        val result = finder().find(gc, listOf(rvz)) as FindResult.CantCheck
-        assertEquals(setOf("RVZ"), result.formats)
+        files["Wind Waker.gcz"] = Rom("Wind Waker.gcz", otherRom)
+        val gcz = Game("/roms/gc/Wind Waker.gcz", "gc", "Wind Waker.gcz", "Wind Waker", "/roms/gc/Wind Waker.gcz", null, 10, 1)
+        val result = finder().find(gc, listOf(gcz)) as FindResult.CantCheck
+        assertEquals(setOf("GCZ"), result.formats)
         assertEquals(1, result.count)
         // Chosen by hand, it's accepted without a check, as before GameCube matching existed.
         val console = RaConsoles.Console(RaConsoles.GAMECUBE, "GC", "GameCube")
         val library = HashLibrary(File(tmp.root, "hashlib2"), download = { """{"Success":true,"MD5List":{"abc":1}}""" })
-        assertEquals(ClubFinder.Verdict.NotCheckable, ClubFinder.verifyChosen(library, console, 1, Rom("Wind Waker.rvz", otherRom)))
+        assertEquals(ClubFinder.Verdict.NotCheckable, ClubFinder.verifyChosen(library, console, 1, Rom("Wind Waker.gcz", otherRom)))
     }
 
     @Test

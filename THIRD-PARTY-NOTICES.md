@@ -65,6 +65,12 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
+### Dolphin's RVZ format
+
+The RVZ reader in `club/disc/Rvz.kt` was written from Dolphin's published description of the
+format (`docs/WiaAndRvz.md` in [Dolphin](https://github.com/dolphin-emu/dolphin)), checking
+details against its reader; no Dolphin code is included.
+
 ## Libraries
 
 Used as Gradle dependencies; each ships its own licence.
@@ -74,6 +80,7 @@ Used as Gradle dependencies; each ships its own licence.
 | [XZ for Java](https://tukaani.org/xz/java.html) (LZMA decoding for CHD) | 0BSD |
 | [jsoup](https://jsoup.org/) (reading the club's page) | MIT |
 | [Apache Commons Compress](https://commons.apache.org/proper/commons-compress/) (reading .7z ROMs), with Commons IO, Lang and Codec | Apache-2.0 |
+| [zstd-jni](https://github.com/luben/zstd-jni) and [Zstandard](https://github.com/facebook/zstd) (reading RVZ GameCube images) | BSD-2-Clause, BSD-3-Clause |
 | Kotlin standard library, kotlinx.coroutines, kotlinx.serialization | Apache-2.0 |
 | AndroidX and Jetpack Compose | Apache-2.0 |
 

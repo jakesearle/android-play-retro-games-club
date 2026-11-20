@@ -58,6 +58,9 @@ android {
             it.systemProperty("club.page", project.findProperty("clubPage") ?: "")
             // -PdiscFile=/path/to/game.chd checks the disc reader and PS1 hash on a real image.
             it.systemProperty("disc.file", project.findProperty("discFile") ?: "")
+            // -PgcFile=/path/to/game.rvz (or .iso) [-PgcHashes=/path/to/hashlibrary.json] hashes a real GameCube image.
+            it.systemProperty("gc.file", project.findProperty("gcFile") ?: "")
+            it.systemProperty("gc.hashes", project.findProperty("gcHashes") ?: "")
         }
     }
 }
@@ -108,7 +111,11 @@ dependencies {
     implementation(libs.jsoup)
     implementation(libs.xz)
     implementation(libs.commons.compress) // reading .7z ROMs
+    // Zstandard for RVZ GameCube images: the Android build (native libraries) in the app, the
+    // desktop build in unit tests.
+    implementation(libs.zstd.jni) { artifact { type = "aar" } }
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)
+    testImplementation(libs.zstd.jni)
 }

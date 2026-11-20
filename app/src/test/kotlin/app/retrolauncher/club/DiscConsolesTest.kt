@@ -176,9 +176,9 @@ class DiscConsolesTest {
         val headerSize = 0x2440 + 0x20 + 0x100 + 0x40
         val expected = md5(disc.copyOf(headerSize), disc.copyOfRange(0x20100, 0x20300), disc.copyOfRange(0x20400, 0x20480))
         assertEquals(expected, RaHash.hash(RaConsoles.GAMECUBE, Folder(mapOf("g.iso" to disc)).rom("g.iso")))
-        // Compressed RVZ can't be read: reported as such, not as "no match".
+        // GCZ can't be read yet: reported as such, not as "no match".
         org.junit.Assert.assertThrows(UnreadableFormatException::class.java) {
-            RaHash.hash(RaConsoles.GAMECUBE, Folder(mapOf("g.rvz" to disc)).rom("g.rvz"))
+            RaHash.hash(RaConsoles.GAMECUBE, Folder(mapOf("g.gcz" to disc)).rom("g.gcz"))
         }
     }
 }
