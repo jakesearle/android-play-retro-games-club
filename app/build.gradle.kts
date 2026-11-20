@@ -65,6 +65,10 @@ android {
             it.systemProperty("rom.file", project.findProperty("romFile") ?: "")
             it.systemProperty("rom.console", project.findProperty("romConsole") ?: "")
             it.systemProperty("rom.hashes", project.findProperty("romHashes") ?: "")
+            // -PpatchArchive=/path/to/RAPatches.zip -PpatchBase=/path/to/base.rom with -PromConsole and
+            // -PromHashes applies each patch in the archive and says which results RA recognises.
+            it.systemProperty("patch.archive", project.findProperty("patchArchive") ?: "")
+            it.systemProperty("patch.base", project.findProperty("patchBase") ?: "")
         }
     }
 }
