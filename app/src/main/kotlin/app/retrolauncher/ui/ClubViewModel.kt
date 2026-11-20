@@ -25,7 +25,11 @@ import app.retrolauncher.club.HashLibrary
 import app.retrolauncher.club.PlatformConsoles
 import app.retrolauncher.club.RaConsoles
 import app.retrolauncher.club.RomLinks
+import app.retrolauncher.launch.EmulatorPackRepository
 import app.retrolauncher.launch.ExtraPlayers
+import app.retrolauncher.launch.Recommendation
+import app.retrolauncher.launch.Recommendations
+import app.retrolauncher.launch.RetroArchCores
 import app.retrolauncher.launch.GameLauncher
 import app.retrolauncher.launch.PlayerChooser
 import app.retrolauncher.launch.PlayerOption
@@ -90,6 +94,7 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     private val installed = InstalledPackages(app.packageManager)
     private val launcher = GameLauncher(app)
     private val hashLibrary = HashLibrary(File(app.filesDir, "hashlib"))
+    private val emulatorPack = EmulatorPackRepository(File(app.filesDir, "pack"), HashLibrary::httpGet)
     private val links = RomLinks(File(app.filesDir, "links.json"))
     private val finder = ClubFinder(
         hashLibrary = hashLibrary,
@@ -373,6 +378,35 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         return n
     }
 
+    // ── Getting an emulator ──────────────────────────────────────────────────
+
+    /**
+     * Whether the pick has no emulator to play it: found but unplayable ([PickState.NO_EMULATOR]),
+     * or missing and nothing installed plays its console either.
+     */
+    fun needsEmulator(row: PickRow): Boolean {
+        if (row.state == PickState.NO_EMULATOR) return true
+        if (row.state != PickState.MISSING) return false
+        val catalogue = _state.value.catalogue ?: return false
+        val console = row.pick.console ?: return false
+        return catalogue.platforms
+            .filter { PlatformConsoles.holds(it, console.id) }
+            .none { catalogue.installedPlayers(it, installed::isInstalled).isNotEmpty() }
+    }
+
+    /**
+     * Emulators to suggest for the pick's platform, from the Obtainium Emulation Pack (loaded
+     * from the network, kept a week). Null if the pack couldn't be loaded and was never saved.
+     */
+    suspend fun emulatorSuggestions(row: PickRow): List<Recommendation>? = withContext(Dispatchers.IO) {
+        val catalogue = _state.value.catalogue ?: return@withContext emptyList()
+        val platform = row.game?.let { catalogue.platform(it.platformId) }
+            ?: row.pick.console?.let { platformFor(catalogue, it.id) }
+            ?: return@withContext emptyList()
+        val pack = emulatorPack.load() ?: return@withContext null
+        Recommendations.forPlatform(catalogue, platform, pack)
+    }
+
     /** Prefer a platform with an installed emulator, so a hand-picked file can launch. */
     private fun platformFor(catalogue: Catalogue, consoleId: Int): Platform? {
         val platforms = catalogue.platforms.filter { PlatformConsoles.holds(it, consoleId) }
@@ -386,6 +420,12 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         val catalogue = _state.value.catalogue ?: return emptyList()
         val platform = catalogue.platform(game.platformId) ?: return emptyList()
         return PlayerChooser.options(catalogue, platform, game, installed::isInstalled)
+    }
+
+    /** The RetroArch core the game would launch with, or null if it doesn't play in RetroArch. */
+    fun retroArchCore(game: Game): String? {
+        val catalogue = _state.value.catalogue ?: return null
+        return playerFor(game)?.let { RetroArchCores.coreName(catalogue, it) }
     }
 
     fun playerFor(game: Game): Player? {

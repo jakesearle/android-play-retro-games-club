@@ -87,6 +87,7 @@ class MainActivity : ComponentActivity() {
                         onRequestAllFiles = ::requestAllFilesAccess,
                         onChooseFile = { row -> choosingFor = row; pickFile.launch(arrayOf("*/*")) },
                         onOpenUrl = ::openUrl,
+                        onOpenLink = ::openLink,
                         showMessage = ::toast,
                         modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
                     )
@@ -147,6 +148,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+
+    /**
+     * Opens an app link (Obtainium's `obtainium://app/...`), or [fallbackUrl] in the browser if
+     * nothing handles it.
+     */
+    private fun openLink(link: String, fallbackUrl: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: ActivityNotFoundException) {
+            toast("Obtainium isn't installed, so opening the download page.")
+            openUrl(fallbackUrl)
+        }
+    }
 
     private fun openUrl(url: String) {
         try {

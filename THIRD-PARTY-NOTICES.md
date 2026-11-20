@@ -84,3 +84,5 @@ Not included in this repository:
   which has no licence and so isn't bundled.
 - The [Play Retro Games Club](https://www.joeysretrohandhelds.com/play-retro-games-club/) page.
 - RetroAchievements' ROM hash lists and box art.
+- The [Obtainium Emulation Pack](https://github.com/RJNY/Obtainium-Emulation-Pack)
+  (Unlicense), for the emulators suggested when a pick has none.

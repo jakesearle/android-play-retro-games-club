@@ -245,3 +245,14 @@ class HomeCardsTest {
         )
     }
 }
+
+class StatsOrderTest {
+    @Test
+    fun `stats read rating, beaten, completed, mastered, time to beat`() {
+        val pick = ClubPick("e", "", "X (GBA)", "", "", "", "", listOf(
+            ClubStat("Time to beat", "~2 hrs"), ClubStat("Mastered", "3"), ClubStat("Players", "40"),
+            ClubStat("Beaten", "24"), ClubStat("Completed", "5"), ClubStat("Rating", "7.2/10"),
+        ))
+        assertEquals(listOf("Rating", "Beaten", "Completed", "Mastered", "Time to beat", "Players"), pick.statsInOrder.map { it.key })
+    }
+}

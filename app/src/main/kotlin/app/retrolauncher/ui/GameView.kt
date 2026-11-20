@@ -23,6 +23,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,10 +61,11 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.retrolauncher.launch.RetroArchCores
 import kotlinx.coroutines.launch
 
 /** A button in the game view: what it says, and what A does. */
-private data class Action(val label: String, val run: () -> Unit)
+private data class Action(val label: String, val icon: ImageVector, val primary: Boolean = false, val run: () -> Unit)
 
 /**
  * One pick in detail: box art, dates, stats, description, which file and emulator it uses (or
@@ -69,6 +83,7 @@ fun GameView(
     onChooseFile: () -> Unit,
     onAddFolder: () -> Unit,
     onOpenUrl: (String) -> Unit,
+    onOpenLink: (link: String, fallbackUrl: String) -> Unit,
     showMessage: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -76,25 +91,30 @@ fun GameView(
     val art by rememberBoxArt(pick.imageUrl)
     var pickerOpen by remember { mutableStateOf(false) }
     var copiesOpen by remember { mutableStateOf(false) }
+    var getEmulatorOpen by remember { mutableStateOf(false) }
+    var helpOpen by remember { mutableStateOf(false) }
+    val help = remember(row, revision) { helpTopics(row, vm) }
 
     val actions = buildList {
+        // No emulator for this game (or its console): getting one comes first.
+        if (vm.needsEmulator(row)) add(Action("Get emulator", Icons.Filled.AddCircle) { getEmulatorOpen = true })
         when (row.state) {
             PickState.READY -> {
-                add(Action("Play") { onPlay() })
-                add(Action("Emulator") { pickerOpen = true })
+                add(Action("Play", Icons.Filled.PlayArrow, primary = true) { onPlay() })
+                add(Action("Emulator", Icons.Filled.Build) { pickerOpen = true })
             }
-            PickState.NO_EMULATOR -> add(Action("Emulator") { pickerOpen = true })
-            PickState.CHOOSE_COPY -> add(Action("Choose copy") { copiesOpen = true })
+            PickState.NO_EMULATOR -> add(Action("Emulator", Icons.Filled.Build) { pickerOpen = true })
+            PickState.CHOOSE_COPY -> add(Action("Choose copy", Icons.AutoMirrored.Filled.List) { copiesOpen = true })
             PickState.MISSING -> {
-                add(Action("Choose ROM file") { onChooseFile() })
-                add(Action("Add ROM folder") { onAddFolder() })
-                add(Action("Search again") { vm.checkPicks() })
+                add(Action("Choose ROM file", Icons.Filled.Search) { onChooseFile() })
+                add(Action("Add ROM folder", Icons.Filled.Add) { onAddFolder() })
+                add(Action("Search again", Icons.Filled.Refresh) { vm.checkPicks() })
             }
-            PickState.UNKNOWN -> add(Action("Add ROM folder") { onAddFolder() })
+            PickState.UNKNOWN -> add(Action("Add ROM folder", Icons.Filled.Add) { onAddFolder() })
             PickState.CHECKING -> Unit
         }
-        if (pick.raUrl.isNotEmpty()) add(Action("RetroAchievements") { onOpenUrl(pick.raUrl) })
-        if (pick.guideUrl.isNotEmpty()) add(Action("Guide") { onOpenUrl(pick.guideUrl) })
+        if (pick.raUrl.isNotEmpty()) add(Action("RetroAchievements", Icons.Filled.Star) { onOpenUrl(pick.raUrl) })
+        if (pick.guideUrl.isNotEmpty()) add(Action("Guide", Icons.Filled.Info) { onOpenUrl(pick.guideUrl) })
     }
     val firstButton = remember { FocusRequester() }
 
@@ -110,7 +130,7 @@ fun GameView(
                 }
             },
     ) {
-        Header(status = null, title = pick.event)
+        Header(status = null, title = pick.event, onHelp = if (help.isNotEmpty()) ({ helpOpen = true }) else null)
         Row(
             Modifier
                 .weight(1f)
@@ -128,7 +148,7 @@ fun GameView(
                     art?.let { Image(it, contentDescription = "Box art", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
                 }
                 Spacer(Modifier.height(10.dp))
-                StatusBadge(row.state, checkSize = 32.dp)
+                GameStatus(row.state)
             }
             Column(Modifier.weight(1f).padding(start = 20.dp)) {
                 Text(pick.displayTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 2)
@@ -139,7 +159,7 @@ fun GameView(
                 if (pick.stats.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        for (stat in pick.stats) {
+                        for (stat in pick.statsInOrder) {
                             Row(
                                 Modifier
                                     .clip(RoundedCornerShape(8.dp))
@@ -153,23 +173,25 @@ fun GameView(
                         }
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-                Text(statusLine(row, vm, revision, hasSources), fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.height(10.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Spacer(Modifier.height(12.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
                     actions.forEachIndexed { i, action ->
                         ActionButton(
                             action.label,
-                            primary = i == 0 && action.label == "Play",
+                            action.icon,
+                            primary = action.primary,
                             onClick = action.run,
                             modifier = if (i == 0) Modifier.focusRequester(firstButton) else Modifier,
                         )
                     }
                 }
-                if (pick.description.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    Description(pick.description, Modifier.weight(1f))
-                }
+                Spacer(Modifier.height(10.dp))
+                // The game's summary, then which file and emulator it uses (or what's missing).
+                Description(pick.description, statusLine(row, vm, revision, hasSources), Modifier.weight(1f))
             }
         }
         Footer {
@@ -184,9 +206,31 @@ fun GameView(
     LaunchedEffect(row.state, windowFocused) { if (windowFocused) takeControllerFocus(view, firstButton) }
 
     if (pickerOpen) row.game?.let { game -> EmulatorPicker(vm, game, pick.displayTitle, onDismiss = { pickerOpen = false }) }
+    if (helpOpen) HelpDialog(help, onDismiss = { helpOpen = false })
+    if (getEmulatorOpen) GetEmulatorDialog(vm, row, onOpenLink, onDismiss = { getEmulatorOpen = false })
     if (copiesOpen) {
         ChooseCopyDialog(row, onChoose = { game -> copiesOpen = false; vm.chooseCopy(row, game)?.let(showMessage) }, onDismiss = { copiesOpen = false })
     }
+}
+
+/**
+ * Troubleshooting for this game's emulator, for the ? button: only what applies (so far, a
+ * RetroArch core that may be missing, since the app can't see RetroArch's cores). Empty means
+ * no ? button.
+ */
+private fun helpTopics(row: PickRow, vm: ClubViewModel): List<HelpTopic> {
+    val game = row.game ?: return emptyList()
+    if (row.state != PickState.READY) return emptyList()
+    return listOfNotNull(
+        vm.retroArchCore(game)?.let { core ->
+            HelpTopic(
+                "RetroArch launches with a black screen",
+                "RetroArch is probably missing the $core core this game plays with. " +
+                    "Get it in ${RetroArchCores.HOW_TO_GET}, then play again. " +
+                    "Or choose another emulator or core with the Emulator button.",
+            )
+        },
+    )
 }
 
 /** What A on Play would do, or why it can't. */
@@ -209,29 +253,59 @@ private fun statusLine(row: PickRow, vm: ClubViewModel, @Suppress("UNUSED_PARAME
             (row.message ?: "Not found.") + if (!hasSources) "\nNo ROM folders added yet." else ""
     }
 
+/** A game view button: an icon and a label. Play, the main action, is the largest. */
 @Composable
-private fun ActionButton(label: String, primary: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ActionButton(label: String, icon: ImageVector, primary: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
-    Text(
-        label,
-        fontSize = 15.sp,
-        fontWeight = FontWeight.SemiBold,
-        color = if (focused) colors.onPrimary else colors.onSurface,
-        modifier = modifier
+    val content = if (focused) colors.onPrimary else colors.onSurface
+    val background = when {
+        focused -> colors.primary
+        primary -> colors.primary.copy(alpha = 0.22f)
+        else -> colors.surfaceVariant
+    }
+    Row(
+        modifier
             .clip(RoundedCornerShape(50))
-            .background(if (focused) colors.primary else colors.surfaceVariant)
+            .background(background)
             .border(2.dp, if (primary && !focused) colors.primary else Color.Transparent, RoundedCornerShape(50))
             .onFocusChanged { focused = it.isFocused }
             .onPad { pad -> if (pad == Pad.A) { onClick(); true } else false }
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-    )
+            .padding(horizontal = if (primary) 26.dp else 18.dp, vertical = if (primary) 13.dp else 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(if (primary) 28.dp else 20.dp))
+        Text(
+            label,
+            fontSize = if (primary) 21.sp else 16.sp,
+            fontWeight = if (primary) FontWeight.Bold else FontWeight.SemiBold,
+            color = content,
+            modifier = Modifier.padding(start = if (primary) 8.dp else 6.dp),
+        )
+    }
 }
 
-/** The description; D-pad down from the buttons focuses it, then up/down scroll long text. */
+/** The status under the box art: spelled out when the ROM is matched, otherwise the status pill. */
 @Composable
-private fun Description(text: String, modifier: Modifier) {
+private fun GameStatus(state: PickState) {
+    if (state == PickState.READY) {
+        val grey = Color(0xFF9AA0AA)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = grey, modifier = Modifier.size(22.dp))
+            Text("ROM matched", color = grey, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 6.dp))
+        }
+    } else {
+        StatusChip(state)
+    }
+}
+
+/**
+ * The game's summary, then a second paragraph on its file and emulator. D-pad down from the
+ * buttons focuses it when it's long, then up/down scroll it.
+ */
+@Composable
+private fun Description(summary: String, details: String, modifier: Modifier) {
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     var focused by remember { mutableStateOf(false) }
@@ -258,6 +332,12 @@ private fun Description(text: String, modifier: Modifier) {
             .verticalScroll(scroll)
             .padding(6.dp),
     ) {
-        Text(text, fontSize = 14.sp, lineHeight = 20.sp)
+        Column {
+            if (summary.isNotEmpty()) {
+                Text(summary, fontSize = 14.sp, lineHeight = 20.sp)
+                Spacer(Modifier.height(10.dp))
+            }
+            Text(details, fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
+        }
     }
 }

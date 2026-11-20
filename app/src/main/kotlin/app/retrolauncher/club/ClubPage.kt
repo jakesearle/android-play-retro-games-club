@@ -27,6 +27,16 @@ data class ClubPick(
     val gameId: Int get() = RaConsoles.gameIdFromUrl(raUrl)
     val console: RaConsoles.Console? get() = RaConsoles.fromTitle(title)
     val displayTitle: String get() = RaConsoles.titleWithoutLabel(title)
+
+    /**
+     * The stats in reading order: rating, then the awards from easiest to hardest (beaten, then
+     * completed in softcore, then mastered in hardcore), then time to beat. Stats this list
+     * doesn't know keep the page's order, after the known ones.
+     */
+    val statsInOrder: List<ClubStat>
+        get() = stats.sortedBy { stat ->
+            STAT_ORDER.indexOfFirst { it.equals(stat.key, ignoreCase = true) }.let { if (it < 0) STAT_ORDER.size else it }
+        }
 }
 
 /**
@@ -35,6 +45,8 @@ data class ClubPick(
  * they change, parsing finds no picks and the caller reports it instead of showing half-empty
  * screens.
  */
+private val STAT_ORDER = listOf("Rating", "Beaten", "Completed", "Mastered", "Time to beat")
+
 object ClubPage {
     const val URL = "https://www.joeysretrohandhelds.com/play-retro-games-club/"
     private const val MAX_PICKS = 12

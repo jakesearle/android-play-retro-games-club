@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import app.retrolauncher.launch.Recommendation
 import app.retrolauncher.library.Game
 import kotlinx.coroutines.delay
 import app.retrolauncher.library.RomSource
@@ -261,6 +263,77 @@ fun MenuDialog(
                     RowText("Remove ${source.label}", f, if (source is RomSource.Saf) "File picker folder" else "Raw path folder")
                 }
             }
+        }
+    }
+}
+
+/**
+ * Suggests emulators for a pick that has none, from the Obtainium Emulation Pack. Choosing one
+ * opens Obtainium, which installs it from its official source and keeps it updated. Coming back
+ * to the app picks up the new emulator by itself.
+ */
+@Composable
+fun GetEmulatorDialog(vm: ClubViewModel, row: PickRow, onOpenLink: (String, String) -> Unit, onDismiss: () -> Unit) {
+    val first = rememberFirstFocus()
+    val result by produceState<Suggestions>(Suggestions.Loading, row) {
+        value = vm.emulatorSuggestions(row)?.let { Suggestions.Loaded(it) } ?: Suggestions.Failed
+    }
+    PadDialog(title = "Get an emulator for ${row.pick.consoleName()}", onDismiss = onDismiss, focus = first, wide = true) {
+        val list = (result as? Suggestions.Loaded)?.list
+        when {
+            result == Suggestions.Loading -> Message("Finding emulators…")
+            result == Suggestions.Failed -> Message("Couldn't load emulator suggestions. Connect to Wi-Fi and try again.")
+            list.isNullOrEmpty() -> Message("No emulator in the Obtainium Emulation Pack plays this yet.")
+            else -> Message("Opens Obtainium, which installs it from its official source and keeps it up to date. Come back here when it's installed.")
+        }
+        LazyColumn(Modifier.weight(1f, fill = false)) {
+            items(list.orEmpty(), key = { it.app.id }) { rec ->
+                FocusRow(
+                    onClick = { onOpenLink(rec.app.obtainiumLink, rec.app.url); onDismiss() },
+                    modifier = if (rec == list?.firstOrNull()) Modifier.focusRequester(first) else Modifier,
+                ) { f ->
+                    RowText(
+                        "Add ${rec.app.name} to Obtainium",
+                        f,
+                        listOfNotNull(rec.app.about, if (rec.achievements) "Works with RetroAchievements" else null).joinToString(" · ").ifEmpty { null },
+                    )
+                }
+            }
+        }
+    }
+}
+
+private sealed interface Suggestions {
+    data object Loading : Suggestions
+    data object Failed : Suggestions
+    data class Loaded(val list: List<Recommendation>) : Suggestions
+}
+
+/** A question and its answer, for [HelpDialog]. */
+data class HelpTopic(val question: String, val answer: String)
+
+/** The game view's ? dialog: a list of questions; A shows an answer, B goes back to the list. */
+@Composable
+fun HelpDialog(topics: List<HelpTopic>, onDismiss: () -> Unit) {
+    val first = rememberFirstFocus()
+    var open by remember { mutableStateOf<HelpTopic?>(null) }
+    val back = remember { FocusRequester() }
+    PadDialog(title = open?.question ?: "Help", onDismiss = { if (open != null) open = null else onDismiss() }, focus = first, wide = true) {
+        val topic = open
+        if (topic == null) {
+            LazyColumn(Modifier.weight(1f, fill = false)) {
+                items(topics, key = { it.question }) { t ->
+                    FocusRow(
+                        onClick = { open = t },
+                        modifier = if (t == topics.first()) Modifier.focusRequester(first) else Modifier,
+                    ) { f -> RowText(t.question, f) }
+                }
+            }
+            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+        } else {
+            Message(topic.answer)
+            FocusRow(onClick = { open = null }, modifier = Modifier.focusRequester(back)) { f -> RowText("Back to questions", f) }
+            LaunchedEffect(topic) { runCatching { back.requestFocus() } }
         }
     }
 }

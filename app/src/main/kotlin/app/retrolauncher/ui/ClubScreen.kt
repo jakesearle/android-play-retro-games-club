@@ -100,6 +100,7 @@ fun ClubScreen(
     onRequestAllFiles: () -> Unit,
     onChooseFile: (PickRow) -> Unit,
     onOpenUrl: (String) -> Unit,
+    onOpenLink: (link: String, fallbackUrl: String) -> Unit,
     showMessage: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -144,6 +145,7 @@ fun ClubScreen(
             onChooseFile = { onChooseFile(open) },
             onAddFolder = onAddFolder,
             onOpenUrl = onOpenUrl,
+            onOpenLink = onOpenLink,
             showMessage = showMessage,
             modifier = modifier,
         )
@@ -329,9 +331,14 @@ fun StatusBadge(state: PickState, checkSize: Dp = 26.dp) {
     }
 }
 
-/** The top bar: a title, an optional status line and, on the home screen, the settings cog. */
+/** The top bar: a title, an optional status line, and the settings cog (home) or help button (game view). */
 @Composable
-fun Header(status: String?, title: String = "Play Retro Games Club", onSettings: (() -> Unit)? = null) {
+fun Header(
+    status: String?,
+    title: String = "Play Retro Games Club",
+    onSettings: (() -> Unit)? = null,
+    onHelp: (() -> Unit)? = null,
+) {
     Row(
         Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -340,31 +347,47 @@ fun Header(status: String?, title: String = "Play Retro Games Club", onSettings:
         if (status != null) {
             Text(status, fontSize = 14.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f), maxLines = 1, modifier = Modifier.padding(start = 16.dp))
         }
+        if (onHelp != null) HelpButton(onHelp, Modifier.padding(start = 12.dp))
         if (onSettings != null) SettingsCog(onSettings, Modifier.padding(start = 12.dp))
     }
 }
 
-/** A round, focusable cog. D-pad up from the top row of cards reaches it; A opens Settings. */
+/** A round, focusable button for the top bar. D-pad up from the screen below reaches it; A presses it. */
 @Composable
-private fun SettingsCog(onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun HeaderButton(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable (focused: Boolean) -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    val colors = MaterialTheme.colorScheme
     Box(
         modifier
             .size(44.dp)
             .clip(CircleShape)
-            .background(if (focused) colors.primary else Color.Transparent)
+            .background(if (focused) MaterialTheme.colorScheme.primary else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }
             .onPad { pad -> if (pad == Pad.A) { onClick(); true } else false }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
+    ) { content(focused) }
+}
+
+/** The home screen's settings cog. */
+@Composable
+private fun SettingsCog(onClick: () -> Unit, modifier: Modifier = Modifier) = HeaderButton(onClick, modifier) { focused ->
+    Icon(
+        Icons.Filled.Settings,
+        contentDescription = "Settings",
+        tint = if (focused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+        modifier = Modifier.size(28.dp),
+    )
+}
+
+/** The game view's help button: a "?" in a ring. */
+@Composable
+private fun HelpButton(onClick: () -> Unit, modifier: Modifier = Modifier) = HeaderButton(onClick, modifier) { focused ->
+    val color = if (focused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
+    Box(
+        Modifier.size(26.dp).border(2.dp, color, CircleShape),
+        contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            Icons.Filled.Settings,
-            contentDescription = "Settings",
-            tint = if (focused) colors.onPrimary else colors.onBackground.copy(alpha = 0.8f),
-            modifier = Modifier.size(28.dp),
-        )
+        Text("?", color = color, fontSize = 16.sp, fontWeight = FontWeight.Bold)
     }
 }
 

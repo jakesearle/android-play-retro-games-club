@@ -39,6 +39,9 @@ object ExtraPlayers {
     /** Catalogue platform ID → packages to put first, making them the default when installed. */
     private val PREFERRED = mapOf("n64" to listOf("com.joeysretro.joey64"))
 
+    /** Packages preferred on [platformId], best first (also used to rank emulator suggestions). */
+    fun preferredFor(platformId: String): List<String> = PREFERRED[platformId].orEmpty()
+
     /** [catalogue] with the extra players added to their platforms. */
     fun addTo(catalogue: Catalogue): Catalogue {
         val data = catalogue.data

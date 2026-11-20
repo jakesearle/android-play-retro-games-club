@@ -44,8 +44,6 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   unlocks were hardcore; can't check that the emulator itself has hardcore switched on.
 - **Previous picks.** Browse the club's earlier games.
 - **Preferred emulators.** Find which emulators Joey's Retro Handhelds recommends and prefer them.
-- **"Get emulator" help.** When no emulator is installed for a pick, link to a recommended one
-  (Obtainium pack, Play Store or GitHub) instead of only naming it.
 
 **Release basics**
 - **App icon**, final **app name**, and final **application ID**. `app.retrolauncher` is a

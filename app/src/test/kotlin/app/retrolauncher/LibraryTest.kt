@@ -254,3 +254,114 @@ class PathToDocumentIdTest {
         assertEquals("/storage/6FEF-7578/ROMs", SafPaths.documentIdToPath(SafPaths.pathToDocumentId("/storage/6FEF-7578/ROMs")!!))
     }
 }
+
+class EmulatorPackTest {
+    private fun s(v: String) = JsonPrimitive(v).toString()
+    private fun app(id: String, name: String, url: String, about: String, category: String = "Emulator") =
+        """{"id":${s(id)},"url":${s(url)},"author":"x","name":${s(name)},"preferredApkIndex":0,""" +
+            """"additionalSettings":${s("{\"about\":\"$about\",\"trackOnly\":false}")},"categories":["$category"],"allowIdChange":false,"overrideSource":null}"""
+
+    private val packJson = """{"apps":[
+        ${app("com.armsx2", "ARMSX2", "https://github.com/ARMSX2/ARMSX2", "PlayStation 2 emulator")},
+        ${app("com.nanodata.armsx", "ARMSX1", "https://github.com/ARMSX2/ARMSX1", "PlayStation 1 emulator")},
+        ${app("com.github.stenzek.duckstation", "DuckStation", "https://duckstation-mirror.rmacias.workers.dev", "PlayStation 1 emulator")},
+        ${app("487343354", "RetroArch (AArch64)", "https://buildbot.libretro.com/stable", "Multi-system emulator (stable builds)")},
+        ${app("com.nendo.argosy", "Argosy", "https://github.com/rommapp/argosy-launcher", "Frontend", category = "Frontend")},
+        ${app("com.github.stenzek.duckstation", "DuckStation (copy)", "https://example.com", "PlayStation 1 emulator")}
+    ],"settings":{}}"""
+
+    private val pack = app.retrolauncher.launch.EmulatorPack.parse(packJson)
+
+    private val catalogue = app.retrolauncher.launch.ExtraPlayers.addTo(
+        Catalogue.parse(
+            """{"format":1,"platforms":[
+              {"id":"psx","name":"PlayStation","players":[
+                {"id":"psx.armsx1","name":"ARMSX1","amStartArguments":${s("-n com.nanodata.armsx/.Main\n-d {file.uri}")}},
+                {"id":"psx.duck","name":"DuckStation","amStartArguments":${s("-n com.github.stenzek.duckstation/.EmulationActivity\n-e bootPath {file.uri}")}},
+                {"id":"psx.ra64","name":"RetroArch","amStartArguments":${s("-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n-e ROM {file.path}")}}
+              ]},
+              {"id":"n64","name":"Nintendo 64","players":[
+                {"id":"n64.ra64","name":"RetroArch","amStartArguments":${s("-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n-e ROM {file.path}")}}
+              ]},
+              {"id":"ps2","name":"PlayStation 2","retroAchievementsConsoleIds":[21],"players":[
+                {"id":"ps2.ra64","name":"RetroArch","amStartArguments":${s("-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n-e ROM {file.path}")}},
+                {"id":"ps2.armsx2","name":"ARMSX2","amStartArguments":${s("-n com.armsx2/.MainActivity\n-d {file.uri}")}}
+              ]},
+              {"id":"vb","name":"Virtual Boy","players":[]}
+            ]}"""
+        )
+    )
+
+    @Test
+    fun `the pack parses, with descriptions and RetroArch's package`() {
+        assertEquals(listOf("ARMSX2", "ARMSX1", "DuckStation", "RetroArch (AArch64)", "Argosy", "DuckStation (copy)"), pack.map { it.name })
+        assertEquals("PlayStation 1 emulator", pack[2].about)
+        assertEquals("com.retroarch.aarch64", pack[3].packageName) // numeric Obtainium ID
+    }
+
+    @Test
+    fun `suggestions put RetroAchievements emulators first, one per app, no frontends`() {
+        val psx = app.retrolauncher.launch.Recommendations.forPlatform(catalogue, catalogue.platform("psx")!!, pack)
+        assertEquals(listOf("DuckStation", "RetroArch (AArch64)", "ARMSX1"), psx.map { it.app.name })
+        assertEquals(listOf(true, true, false), psx.map { it.achievements })
+        assertEquals(emptyList<String>(), app.retrolauncher.launch.Recommendations.forPlatform(catalogue, catalogue.platform("vb")!!, pack))
+    }
+
+    @Test
+    fun `RetroArch doesn't count for achievements on PS2`() {
+        val ps2 = app.retrolauncher.launch.Recommendations.forPlatform(catalogue, catalogue.platform("ps2")!!, pack)
+        assertEquals(listOf("ARMSX2" to true, "RetroArch (AArch64)" to false), ps2.map { it.app.name to it.achievements })
+    }
+
+    @Test
+    fun `Joey64 is suggested first for N64`() {
+        val n64 = app.retrolauncher.launch.Recommendations.forPlatform(catalogue, catalogue.platform("n64")!!, pack)
+        assertEquals(listOf("Joey64", "RetroArch (AArch64)"), n64.map { it.app.name })
+    }
+
+    @Test
+    fun `the Obtainium link carries the app's config`() {
+        val link = pack[2].obtainiumLink
+        assertEquals(true, link.startsWith("obtainium://app/"))
+        val decoded = java.net.URLDecoder.decode(link.removePrefix("obtainium://app/"), "UTF-8")
+        assertEquals(pack[2].config, kotlinx.serialization.json.Json.parseToJsonElement(decoded))
+        assertEquals(false, link.contains(" ") || link.contains("+"))
+    }
+
+    @Test
+    fun `the pack is kept a week and an old copy is used offline`() {
+        val dir = java.nio.file.Files.createTempDirectory("pack").toFile()
+        var downloads = 0
+        var online = true
+        var now = 1_000_000_000L
+        val repo = { app.retrolauncher.launch.EmulatorPackRepository(dir, { downloads++; if (!online) throw java.io.IOException("offline"); packJson }, { now }) }
+        assertEquals(6, repo().load()!!.size)
+        java.io.File(dir, "emulator-pack.json").setLastModified(now)
+        assertEquals(6, repo().load()!!.size)
+        assertEquals(1, downloads) // fresh: no second download
+        now += 8L * 24 * 60 * 60 * 1000
+        online = false
+        assertEquals(6, repo().load()!!.size) // stale and offline: the old copy
+        assertEquals(2, downloads)
+        assertNull(app.retrolauncher.launch.EmulatorPackRepository(java.nio.file.Files.createTempDirectory("none").toFile(), { throw java.io.IOException() }).load())
+    }
+}
+
+class RetroArchCoresTest {
+    private fun s(v: String) = JsonPrimitive(v).toString()
+    private val catalogue = Catalogue.parse(
+        """{"format":1,"platforms":[{"id":"saturn","name":"Saturn","players":[
+          {"id":"sat.yaba","name":"YabaSanshiro","amStartArguments":${s("-n org.uoyabause.android/.Main\n-d {file.uri}")}},
+          {"id":"sat.ra64.beetle","name":"RetroArch (64 bits) - beetle saturn","amStartArguments":${s("-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n-e ROM {file.path}\n-e LIBRETRO /data/data/com.retroarch.aarch64/cores/mednafen_saturn_libretro_android.so")}},
+          {"id":"sat.ra64.plain","name":"RetroArch (64 bits)","amStartArguments":${s("-n com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture\n-e ROM {file.path}\n-e LIBRETRO /data/data/com.retroarch.aarch64/cores/yabause_libretro_android.so")}}
+        ]}]}"""
+    )
+    private val players = catalogue.platform("saturn")!!.players
+
+    @Test
+    fun `RetroArch players name their core, others don't`() {
+        assertNull(app.retrolauncher.launch.RetroArchCores.coreName(catalogue, players[0]))
+        assertEquals("beetle saturn", app.retrolauncher.launch.RetroArchCores.coreName(catalogue, players[1]))
+        assertEquals("yabause", app.retrolauncher.launch.RetroArchCores.coreName(catalogue, players[2])) // from the core file
+    }
+}
