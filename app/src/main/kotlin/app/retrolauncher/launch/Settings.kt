@@ -29,6 +29,11 @@ class Settings(context: Context) {
     private fun platformKey(id: String) = "platform/$id"
     private fun gameKey(game: Game) = "game/${game.key}"
 
+    /** Whether the first-run setup has been finished or skipped. */
+    var setupDone: Boolean
+        get() = prefs.getBoolean(SETUP_DONE, false)
+        set(value) = prefs.edit { putBoolean(SETUP_DONE, value) }
+
     /** Debug builds only: extra test picks, as "title|RetroAchievements URL" lines. */
     var debugPicks: List<String>
         get() = prefs.getString(DEBUG_PICKS, null)?.lines()?.filter { it.isNotBlank() }.orEmpty()
@@ -37,5 +42,6 @@ class Settings(context: Context) {
     private companion object {
         const val SOURCES = "sources"
         const val DEBUG_PICKS = "debug_picks"
+        const val SETUP_DONE = "setup_done"
     }
 }

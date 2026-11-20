@@ -34,6 +34,7 @@ import app.retrolauncher.library.Game
 import app.retrolauncher.library.LibraryScanner
 import app.retrolauncher.library.RomFiles
 import app.retrolauncher.library.RomSource
+import app.retrolauncher.library.SafPaths
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -70,6 +71,8 @@ data class ClubState(
     val linkCount: Int = 0,
     /** Changes whenever emulator choices or installed apps change, so the UI recomposes. */
     val revision: Int = 0,
+    /** The first-run setup is showing instead of the home screen. */
+    val showSetup: Boolean = false,
 )
 
 enum class ChoiceScope { GAME, PLATFORM }
@@ -106,11 +109,18 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     private var clubJob: Job? = null
 
     private val _state = MutableStateFlow(
-        ClubState(sources = settings.sources, hasAllFilesAccess = hasAllFilesAccess(), linkCount = links.count())
+        ClubState(
+            sources = settings.sources,
+            hasAllFilesAccess = hasAllFilesAccess(),
+            linkCount = links.count(),
+            showSetup = shouldShowSetup(settings.setupDone, settings.sources.isNotEmpty()),
+        )
     )
     val state: StateFlow<ClubState> = _state
 
     init {
+        // Someone who added ROM folders before setup existed doesn't need it.
+        if (!settings.setupDone && settings.sources.isNotEmpty()) settings.setupDone = true
         // Covers the catalogue download too: the first onResume, right after launch, then
         // doesn't start a second club load beside this one.
         clubJob = viewModelScope.launch {
@@ -344,6 +354,17 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         null
     }
 
+    // ── First-run setup ──────────────────────────────────────────────────────
+
+    /** Finishes (or skips) the first-run setup and shows the home screen. */
+    fun finishSetup() {
+        settings.setupDone = true
+        _state.update { it.copy(showSetup = false) }
+    }
+
+    /** Shows the setup again (Settings › Set up again). */
+    fun startSetup() = _state.update { it.copy(showSetup = true) }
+
     /** Forgets every saved game-to-ROM link and searches again. Returns how many there were. */
     fun unlinkAll(): Int {
         val n = links.clear()
@@ -437,13 +458,16 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
             File("/storage").listFiles()?.filter { it.name != "emulated" && it.name != "self" }?.let(::addAll)
         }
         val names = listOf("ROMs", "Roms", "roms", "Games", "Emulation/roms")
+        // Folders already added, by key, and by real path for folders added with the picker.
         val existing = settings.sources.map { it.key.lowercase() }.toSet()
+        val existingPaths = settings.sources.mapNotNull { (it as? RomSource.Saf)?.let { s -> SafPaths.treeUriToPath(s.treeUri) } }
+            .map { it.lowercase() }.toSet()
         return roots.flatMap { root -> names.map { File(root, it) } }
             .filter { it.isDirectory }
             .map { it.canonicalPath }
             // Shared storage is case-insensitive, so ROMs, Roms and roms are usually one folder.
             .distinctBy { it.lowercase() }
-            .filter { RomSource.RawPath(it).key.lowercase() !in existing }
+            .filter { RomSource.RawPath(it).key.lowercase() !in existing && it.lowercase() !in existingPaths }
     }
 
     private fun hasAllFilesAccess(): Boolean =
@@ -463,6 +487,9 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 }
+
+/** Setup shows on first run: until it's finished or skipped, and only while there are no ROM folders. */
+fun shouldShowSetup(setupDone: Boolean, hasSources: Boolean): Boolean = !setupDone && !hasSources
 
 /** The event label of test picks added in debug builds. */
 const val DEBUG_EVENT = "Test pick (debug build)"

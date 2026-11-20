@@ -8,6 +8,7 @@ import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.provider.Settings
 import android.view.KeyEvent
 import android.view.ViewGroup
@@ -29,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.ui.graphics.Color
 import app.retrolauncher.library.RomSource
+import app.retrolauncher.library.SafPaths
 import androidx.lifecycle.lifecycleScope
 import app.retrolauncher.ui.ClubScreen
 import app.retrolauncher.ui.ClubViewModel
@@ -81,6 +83,7 @@ class MainActivity : ComponentActivity() {
                     ClubScreen(
                         vm = vm,
                         onAddFolder = { pickFolder.launch(null) },
+                        onOpenFolder = ::openFolder,
                         onRequestAllFiles = ::requestAllFilesAccess,
                         onChooseFile = { row -> choosingFor = row; pickFile.launch(arrayOf("*/*")) },
                         onOpenUrl = ::openUrl,
@@ -150,6 +153,34 @@ class MainActivity : ComponentActivity() {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (_: ActivityNotFoundException) {
             toast("No browser is installed to open $url")
+        }
+    }
+
+    /**
+     * Opens a ROM folder in the file manager: VIEW on the folder's document URI with the directory
+     * type, which Android sends to the default file manager (or asks which one). Picker folders
+     * already have a document URI; raw paths are mapped back to shared-storage document IDs.
+     */
+    private fun openFolder(source: RomSource) {
+        val uri = when (source) {
+            is RomSource.Saf -> {
+                val tree = Uri.parse(source.treeUri)
+                DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+            }
+            is RomSource.RawPath -> SafPaths.pathToDocumentId(source.path)
+                ?.let { DocumentsContract.buildDocumentUri(SafPaths.EXTERNAL_STORAGE, it) }
+        }
+        if (uri == null) {
+            toast("Can't open ${source.label} in a file manager.")
+            return
+        }
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, DocumentsContract.Document.MIME_TYPE_DIR)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            toast("No file manager here can open folders. The folder is ${source.label}")
         }
     }
 

@@ -63,7 +63,26 @@ object GameTitles {
  * My Boy!) can then still launch games from folders picked with the file picker.
  */
 object SafPaths {
-    private const val EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.documents"
+    /** The shared-storage documents provider (internal storage and SD cards). */
+    const val EXTERNAL_STORAGE = "com.android.externalstorage.documents"
+    private const val EXTERNAL_STORAGE_AUTHORITY = EXTERNAL_STORAGE
+
+    /** Internal shared storage, as it's usually spelled. */
+    private val PRIMARY_ROOTS = listOf("/storage/emulated/0", "/sdcard", "/storage/self/primary")
+    private val SD_CARD_PATH = Regex("^/storage/([0-9A-Fa-f]{4}-[0-9A-Fa-f]{4})(?:/(.*))?$")
+
+    /**
+     * The reverse of [documentIdToPath]: `/storage/emulated/0/ROMs` → `primary:ROMs`,
+     * `/storage/1234-ABCD/ROMs` → `1234-ABCD:ROMs`. Null for paths outside shared storage.
+     */
+    fun pathToDocumentId(path: String): String? {
+        val clean = path.trimEnd('/')
+        PRIMARY_ROOTS.firstOrNull { clean == it || clean.startsWith("$it/") }?.let { root ->
+            return "primary:" + clean.removePrefix(root).trimStart('/')
+        }
+        val m = SD_CARD_PATH.find(clean) ?: return null
+        return m.groupValues[1] + ":" + m.groupValues[2]
+    }
 
     /** `primary:ROMs/gba/x.gba` → `/storage/emulated/0/ROMs/gba/x.gba`; `1234-ABCD:gba` → `/storage/1234-ABCD/gba`. */
     fun documentIdToPath(documentId: String): String? {

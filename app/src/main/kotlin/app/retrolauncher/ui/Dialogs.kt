@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,26 +23,39 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.retrolauncher.library.Game
 import kotlinx.coroutines.delay
 import app.retrolauncher.library.RomSource
 
 /** A dialog that closes on B, Start or Select as well as Back, with a title and focusable rows. */
 @Composable
-private fun PadDialog(title: String, onDismiss: () -> Unit, focus: FocusRequester, content: @Composable ColumnScope.() -> Unit) {
-    Dialog(onDismissRequest = onDismiss) {
+private fun PadDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    focus: FocusRequester,
+    wide: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    // Android caps a dialog at its default dialog width (about a third of a 16:9 handheld screen)
+    // unless told otherwise, so a wide dialog opts out and sizes itself to the screen.
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = !wide)) {
         // A dialog has its own window and view. Focus has to be requested from inside it, once
-        // its window has focus (a moment after it appears), so retry briefly.
+        // its window has focus (a moment after it appears), so retry briefly, but stop as soon as
+        // a row has focus: retrying after that would pull a quick D-pad press back to the top.
         val dialogView = LocalView.current
+        var focusLanded by remember { mutableStateOf(false) }
         LaunchedEffect(Unit) {
             for (wait in longArrayOf(0, 50, 100, 150, 200)) {
                 delay(wait)
+                if (focusLanded) break
                 takeControllerFocus(dialogView, focus)
             }
         }
@@ -49,11 +63,13 @@ private fun PadDialog(title: String, onDismiss: () -> Unit, focus: FocusRequeste
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
             modifier = Modifier
-                .width(600.dp)
+                .then(if (wide) Modifier.fillMaxWidth(0.9f).widthIn(max = 760.dp) else Modifier.width(600.dp))
                 // Fit the 16:9 handheld screen; the list scrolls and the hint row stays visible.
                 .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.9f).dp)
                 // Unhandled, Start would fall back to a "click" on the focused row.
-                .onPad { pad -> if (pad == Pad.B || pad == Pad.START || pad == Pad.SELECT) { onDismiss(); true } else false },
+                .onPad { pad -> if (pad == Pad.B || pad == Pad.START || pad == Pad.SELECT) { onDismiss(); true } else false }
+                .onFocusChanged { if (it.hasFocus) focusLanded = true },
+
         ) {
             Column(Modifier.padding(vertical = 16.dp)) {
                 Text(
@@ -163,6 +179,7 @@ fun MenuDialog(
     vm: ClubViewModel,
     state: ClubState,
     onAddFolder: () -> Unit,
+    onOpenFolder: (RomSource) -> Unit,
     onRequestAllFiles: () -> Unit,
     showMessage: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -171,11 +188,21 @@ fun MenuDialog(
     var confirmUnlink by remember { mutableStateOf(false) }
     val first = rememberFirstFocus()
 
-    PadDialog(title = "Settings", onDismiss = onDismiss, focus = first) {
+    PadDialog(title = "Settings", onDismiss = onDismiss, focus = first, wide = true) {
         LazyColumn(Modifier.weight(1f, fill = false)) {
             item {
                 FocusRow(onClick = { vm.refresh(); onDismiss() }, modifier = Modifier.focusRequester(first)) { f ->
                     RowText("Refresh games", f, "Asks the club's site for its current picks and searches again.")
+                }
+            }
+            // Open a ROM folder in the file manager: one row, or one per folder when there are several.
+            items(state.sources, key = { "open:${it.key}" }) { source ->
+                FocusRow(onClick = { onOpenFolder(source) }) { f ->
+                    RowText(
+                        if (state.sources.size == 1) "Open ROMs folder" else "Open ${source.label}",
+                        f,
+                        if (state.sources.size == 1) "${source.label}, in your file manager" else "In your file manager",
+                    )
                 }
             }
             item {
@@ -212,6 +239,11 @@ fun MenuDialog(
                         f,
                         "Forgets which file each game uses (${state.linkCount} linked), so a copy you've added is found.",
                     )
+                }
+            }
+            item {
+                FocusRow(onClick = { onDismiss(); vm.startSetup() }) { f ->
+                    RowText("Set up again", f, "Walks through choosing ROM folders and emulators.")
                 }
             }
             if (state.sources.isNotEmpty()) {

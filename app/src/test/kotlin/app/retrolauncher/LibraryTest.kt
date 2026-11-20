@@ -231,3 +231,26 @@ class ExtraPlayersTest {
         assertEquals("n64.ra64.mupen", pick(app.retrolauncher.launch.Choices("n64.ra64.mupen", null)) { true })
     }
 }
+
+class SetupTest {
+    @Test
+    fun `setup shows on first run until done, and never once there are ROM folders`() {
+        assertEquals(true, app.retrolauncher.ui.shouldShowSetup(setupDone = false, hasSources = false))
+        assertEquals(false, app.retrolauncher.ui.shouldShowSetup(setupDone = true, hasSources = false)) // skipped
+        assertEquals(false, app.retrolauncher.ui.shouldShowSetup(setupDone = false, hasSources = true)) // set up before setup existed
+    }
+}
+
+class PathToDocumentIdTest {
+    @Test
+    fun `paths map back to storage document IDs`() {
+        assertEquals("primary:ROMs", SafPaths.pathToDocumentId("/storage/emulated/0/ROMs"))
+        assertEquals("primary:ROMs", SafPaths.pathToDocumentId("/sdcard/ROMs/"))
+        assertEquals("primary:", SafPaths.pathToDocumentId("/storage/emulated/0"))
+        assertEquals("6FEF-7578:ROMs/psx", SafPaths.pathToDocumentId("/storage/6FEF-7578/ROMs/psx"))
+        assertEquals("6FEF-7578:", SafPaths.pathToDocumentId("/storage/6FEF-7578"))
+        assertNull(SafPaths.pathToDocumentId("/data/data/app"))
+        // And back again.
+        assertEquals("/storage/6FEF-7578/ROMs", SafPaths.documentIdToPath(SafPaths.pathToDocumentId("/storage/6FEF-7578/ROMs")!!))
+    }
+}

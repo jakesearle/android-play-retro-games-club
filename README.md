@@ -44,8 +44,6 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   unlocks were hardcore; can't check that the emulator itself has hardcore switched on.
 - **Previous picks.** Browse the club's earlier games.
 - **Preferred emulators.** Find which emulators Joey's Retro Handhelds recommends and prefer them.
-- **First-run setup.** Pick a ROM folder, grant all-files access (explained), and a note that
-  RetroArch needs its own file access. Today a new user just sees four "Missing ROM" cards.
 - **"Get emulator" help.** When no emulator is installed for a pick, link to a recommended one
   (Obtainium pack, Play Store or GitHub) instead of only naming it.
 

@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.retrolauncher.library.RomSource
 
 /** The four kinds of club pick, in the order the home screen shows them. */
 enum class PickType(val label: String) {
@@ -95,6 +96,7 @@ internal fun homeCards(rows: List<PickRow>): List<Card> {
 fun ClubScreen(
     vm: ClubViewModel,
     onAddFolder: () -> Unit,
+    onOpenFolder: (RomSource) -> Unit,
     onRequestAllFiles: () -> Unit,
     onChooseFile: (PickRow) -> Unit,
     onOpenUrl: (String) -> Unit,
@@ -102,6 +104,10 @@ fun ClubScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    if (state.showSetup) {
+        SetupScreen(vm, state, onAddFolder, onRequestAllFiles, modifier)
+        return
+    }
     var focusedIndex by rememberSaveable { mutableIntStateOf(0) }
     /** The card that has focus right now, or null; [focusedIndex] remembers the last one. */
     var focusedCard by remember { mutableStateOf<Int?>(null) }
@@ -213,6 +219,7 @@ fun ClubScreen(
             vm = vm,
             state = state,
             onAddFolder = { menuOpen = false; onAddFolder() },
+            onOpenFolder = { source -> menuOpen = false; onOpenFolder(source) },
             onRequestAllFiles = { menuOpen = false; onRequestAllFiles() },
             showMessage = showMessage,
             onDismiss = { menuOpen = false },
