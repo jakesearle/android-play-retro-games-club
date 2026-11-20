@@ -60,9 +60,11 @@ android {
             it.systemProperty("club.page", project.findProperty("clubPage") ?: "")
             // -PdiscFile=/path/to/game.chd checks the disc reader and PS1 hash on a real image.
             it.systemProperty("disc.file", project.findProperty("discFile") ?: "")
-            // -PgcFile=/path/to/game.rvz (or .iso) [-PgcHashes=/path/to/hashlibrary.json] hashes a real GameCube image.
-            it.systemProperty("gc.file", project.findProperty("gcFile") ?: "")
-            it.systemProperty("gc.hashes", project.findProperty("gcHashes") ?: "")
+            // -PromFile=/path/to/image [-PromConsole=41] [-PromHashes=/path/to/hashlibrary.json] hashes a
+            // real disc image (GameCube unless a RetroAchievements console ID is given).
+            it.systemProperty("rom.file", project.findProperty("romFile") ?: "")
+            it.systemProperty("rom.console", project.findProperty("romConsole") ?: "")
+            it.systemProperty("rom.hashes", project.findProperty("romHashes") ?: "")
         }
     }
 }

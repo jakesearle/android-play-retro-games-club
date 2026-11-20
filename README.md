@@ -74,9 +74,10 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
 **ROM matching**
 - **More disc formats.** Not read yet: GameCube WBFS/CISO, Wii (encrypted partitions), and
   3DO, Neo Geo CD, Jaguar CD and PC-FX. GameCube RVZ is checked against a real disc (Super
-  Mario Sunshine matches RetroAchievements). Sega CD, Saturn, PC Engine CD, Dreamcast, PSP,
-  GameCube ISO/GCZ and DVD-type CHDs (PS2, PSP) are tested on made-up images; they still need
-  checking on a real disc of each.
+  Mario Sunshine matches RetroAchievements), and so are PSP ISO and DVD CHD (zstd) images
+  (Grand Theft Auto: Chinatown Wars and Lumines match). Sega CD, Saturn, PC Engine CD,
+  Dreamcast, GameCube ISO/GCZ, and CHDs using `huff` or `flac`, are tested on made-up
+  images; they still need checking on a real disc of each.
 
 ## Later
 
@@ -116,7 +117,9 @@ Ideas we've looked into and set aside for now.
 
 Add `-PcatalogueLive=true` to check every entry of the live emulator catalogue,
 or `-PclubPage=/path/to/saved.html` to check the parser against a saved copy of
-the club's page.
+the club's page. `-PromFile=/path/to/image -PromConsole=41 -PromHashes=/path/to/list.json`
+hashes a real disc image (console ID from RetroAchievements; the list is a saved
+`dorequest.php?r=hashlibrary&c=41`) and says whether RetroAchievements recognises it.
 
 GitHub Actions runs the unit tests and lint on every push and pull request
 (`.github/workflows/ci.yml`); the reports are kept as a build artifact.

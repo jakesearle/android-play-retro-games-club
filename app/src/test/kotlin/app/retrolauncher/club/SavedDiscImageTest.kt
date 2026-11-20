@@ -8,14 +8,16 @@ import java.nio.channels.SeekableByteChannel
 import java.nio.file.StandardOpenOption
 
 /**
- * Opt-in: hashes a real GameCube image (-PgcFile=..., RVZ or ISO) and, with -PgcHashes=... (a
- * saved copy of RetroAchievements' `hashlibrary&c=16`), says whether RA recognises it.
+ * Opt-in: hashes a real disc image (-PromFile=...) for a console (-PromConsole=RA console ID,
+ * GameCube by default) and, with -PromHashes=... (a saved copy of RetroAchievements'
+ * `hashlibrary&c=<console>`), says whether RA recognises it.
  */
-class SavedGameCubeTest {
+class SavedDiscImageTest {
     @Test
-    fun `hash a real GameCube image`() {
-        val path = System.getProperty("gc.file").orEmpty()
-        assumeTrue("set -PgcFile to run", path.isNotEmpty())
+    fun `hash a real disc image`() {
+        val path = System.getProperty("rom.file").orEmpty()
+        assumeTrue("set -PromFile to run", path.isNotEmpty())
+        val console = System.getProperty("rom.console").orEmpty().toIntOrNull() ?: RaConsoles.GAMECUBE
         val file = File(path)
         val rom = object : RomFile {
             override val name = file.name
@@ -24,9 +26,9 @@ class SavedGameCubeTest {
             override fun openChannel(): SeekableByteChannel = java.nio.file.Files.newByteChannel(file.toPath(), StandardOpenOption.READ)
         }
         val started = System.nanoTime()
-        val hash = RaHash.hash(RaConsoles.GAMECUBE, rom)
-        println("GameCube hash of ${file.name}: $hash (${(System.nanoTime() - started) / 1_000_000} ms)")
-        val library = System.getProperty("gc.hashes").orEmpty()
+        val hash = RaHash.hash(console, rom)
+        println("Console $console hash of ${file.name}: $hash (${(System.nanoTime() - started) / 1_000_000} ms)")
+        val library = System.getProperty("rom.hashes").orEmpty()
         if (library.isNotEmpty() && hash != null) {
             val match = Regex(""""${hash}"\s*:\s*(\d+)""", RegexOption.IGNORE_CASE).find(File(library).readText())
             println(if (match != null) "RetroAchievements recognises it: game ${match.groupValues[1]}" else "Not in RetroAchievements' list")
