@@ -12,8 +12,8 @@ Retroid Pocket 5 (Android 13), and is the Android counterpart of the
   alt="Get it on Obtainium" height="80">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/jakesearle/android-play-retro-games-club)
 
 Install and update it with [Obtainium](https://github.com/ImranR98/Obtainium), which
-follows this repository's GitHub releases. (Until the first release is published, there's
-nothing for it to install yet.)
+follows this repository's GitHub releases, or download the APK from the
+[latest release](https://github.com/jakesearle/android-play-retro-games-club/releases/latest).
 
 Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or RetroAchievements.
 
@@ -65,11 +65,9 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   wrong one, so it's on hold until we decide on ScreenScraper.
 
 **Release basics**
-- **Signed release build** on GitHub releases, for Obtainium to install and update, plus an
-  in-app "new version available" check. Release builds are already shrunk with R8 and sign
-  themselves once `keystore.properties` exists (see `keystore.properties.example`); what's
-  left is creating the key, checking a shrunk build all the way through on a device, and
-  publishing the first release.
+- **In-app "new version available" check** against this repository's GitHub releases.
+  Releases are signed, shrunk with R8 and published here (the first is 0.1.0); Obtainium
+  already picks up new ones.
 - **Testing beyond the Retroid Pocket 5:** 4:3 and near-square screens, small 3.5-4" displays,
   Android 10-15, and handhelds with A/B swapped.
 
