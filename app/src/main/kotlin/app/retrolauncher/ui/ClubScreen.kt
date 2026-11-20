@@ -125,6 +125,7 @@ fun ClubScreen(
     var openKey by rememberSaveable { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     var raOpen by remember { mutableStateOf(false) }
+    var aboutOpen by remember { mutableStateOf(false) }
     // The past-picks page. Kept here so it comes back as it was when its game view closes.
     var pastOpen by rememberSaveable { mutableStateOf(false) }
     var pastShown by rememberSaveable { mutableIntStateOf(PAST_BATCH) }
@@ -302,6 +303,7 @@ fun ClubScreen(
             onOpenFolder = { source -> menuOpen = false; onOpenFolder(source) },
             onRequestAllFiles = { menuOpen = false; onRequestAllFiles() },
             onRetroAchievements = { menuOpen = false; raOpen = true },
+            onAbout = { menuOpen = false; aboutOpen = true },
             showMessage = showMessage,
             onDismiss = { menuOpen = false },
         )
@@ -314,6 +316,7 @@ fun ClubScreen(
             onDismiss = vm::dismissUnrecognized,
         )
     }
+    if (aboutOpen) AboutDialog(onOpenUrl = onOpenUrl, onDismiss = { aboutOpen = false })
     if (raOpen) {
         RaSignInDialog(vm, state.ra, onOpenUrl = onOpenUrl, showMessage = showMessage, onDismiss = { raOpen = false })
     }

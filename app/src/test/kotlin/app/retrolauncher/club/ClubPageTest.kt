@@ -427,3 +427,14 @@ class RomLinksUnverifiedTest {
         assertFalse(reloaded.get(7)!!.unverified)
     }
 }
+
+class PlainNoticesTest {
+    @Test
+    fun `notices read as plain text`() {
+        val md = "# Third-party notices\n\n```\nMIT License\n```\n\n| Library | Licence |\n|---|---|\n| [jsoup](https://jsoup.org/) | MIT |\n\nUses `RaHash.kt`."
+        assertEquals(
+            "Third-party notices\n\nMIT License\n\nLibrary — Licence\njsoup (https://jsoup.org/) — MIT\n\nUses RaHash.kt.",
+            app.retrolauncher.ui.plainNotices(md),
+        )
+    }
+}

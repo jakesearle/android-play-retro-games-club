@@ -36,6 +36,31 @@ android {
     }
 }
 
+/**
+ * Copies the licence and third-party notices into the app's assets, so Settings › About can
+ * show them: the libchdr port's BSD licence requires its notice to ship with the app.
+ */
+abstract class NoticesTask : DefaultTask() {
+    @get:InputFiles abstract val notices: ConfigurableFileCollection
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val out = outputDir.get().asFile
+        out.deleteRecursively()
+        out.mkdirs()
+        notices.files.forEach { it.copyTo(out.resolve(it.name), overwrite = true) }
+    }
+}
+
+val notices = tasks.register<NoticesTask>("bundleNotices") {
+    notices.from(rootProject.file("LICENSE"), rootProject.file("THIRD-PARTY-NOTICES.md"))
+}
+
+androidComponents {
+    onVariants { variant -> variant.sources.assets?.addGeneratedSourceDirectory(notices, NoticesTask::outputDir) }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)

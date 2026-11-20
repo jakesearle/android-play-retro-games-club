@@ -58,8 +58,6 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   `obtainium://add/<repo URL>` link (through Obtainium's web redirect, since GitHub won't
   link a custom scheme). Needs the repo public and the APK attached to GitHub releases, so
   Obtainium can see new versions.
-- **Licences in the app.** Settings › About with the version and third-party notices: the
-  libchdr port's BSD licence requires its notice to ship with the app, not only the repo.
 - **Testing beyond the Retroid Pocket 5:** 4:3 and near-square screens, small 3.5-4" displays,
   Android 10-15, and handhelds with A/B swapped.
 - **A heads-up to Joey's Retro Handhelds** that the app reads the club page (and maybe ask
@@ -72,8 +70,6 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
 **Nice to have**
 - **Share logs** from Settings for bug reports (Discord users can't run adb).
 - **A countdown** on the home screen ("New Game of the Week in 2 days").
-- **Links to the club's Discord and leaderboard** from Settings.
-- **A privacy line:** the app sends no analytics.
 
 ## Later
 

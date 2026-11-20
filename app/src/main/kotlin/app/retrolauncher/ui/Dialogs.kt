@@ -190,6 +190,7 @@ fun MenuDialog(
     onOpenFolder: (RomSource) -> Unit,
     onRequestAllFiles: () -> Unit,
     onRetroAchievements: () -> Unit,
+    onAbout: () -> Unit,
     showMessage: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -267,6 +268,11 @@ fun MenuDialog(
             item {
                 FocusRow(onClick = { onDismiss(); vm.startSetup() }) { f ->
                     RowText("Set up again", f, "Walks through choosing ROM folders and emulators.")
+                }
+            }
+            item {
+                FocusRow(onClick = onAbout) { f ->
+                    RowText("About…", f, "Version, privacy, the club's Discord and leaderboard, and licences.")
                 }
             }
             if (state.sources.isNotEmpty()) {
