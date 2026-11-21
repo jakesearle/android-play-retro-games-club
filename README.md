@@ -34,7 +34,8 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   list of known ROMs, so any file name works but only a recognized version
   counts. Cartridge ROMs can be plain, zipped or in a .7z. Discs are matched for
   PlayStation 1 and 2, Sega CD, Saturn, PC Engine CD and Dreamcast (CHD, CUE/BIN,
-  ISO, GDI), PSP (ISO, CSO, PBP, CHD) and GameCube (ISO, GCM, RVZ, WIA and GCZ).
+  ISO, GDI), PSP (ISO, CSO, PBP, CHD), GameCube (ISO, GCM, RVZ, WIA and GCZ) and
+  Wii (ISO, RVZ, WIA and GCZ).
   Once a game has launched, its file is remembered.
 - **Launching** uses the open emulator catalogue published by
   [CocoonFE](https://github.com/KansoMirai/CocoonFE), downloaded and cached at
@@ -90,12 +91,12 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   Android 10-15, and handhelds with A/B swapped.
 
 **ROM matching**
-- **More disc formats.** Not read yet: GameCube WBFS/CISO, Wii (encrypted partitions), and
-  3DO, Neo Geo CD, Jaguar CD and PC-FX. GameCube RVZ is checked against a real disc (Super
-  Mario Sunshine matches RetroAchievements), and so are PSP ISO and DVD CHD (zstd) images
+- **More disc formats.** Not read yet: GameCube and Wii WBFS/CISO, WiiWare (.wad), and
+  3DO, Neo Geo CD, Jaguar CD and PC-FX. GameCube and Wii RVZ are checked against real discs
+  (Super Mario Sunshine and Super Mario Galaxy match RetroAchievements), and so are PSP ISO and DVD CHD (zstd) images
   (Grand Theft Auto: Chinatown Wars and Lumines match) and PS1 CD CHDs (six games, all
   three CD codecs). Sega CD, Saturn, PC Engine CD,
-  Dreamcast, GameCube ISO/GCZ, and CHDs using `huff` or `flac`, are tested on made-up
+  Dreamcast, GameCube ISO/GCZ, Wii ISO/GCZ, and CHDs using `huff` or `flac`, are tested on made-up
   images; they still need checking on a real disc of each.
 
 ## Later

@@ -224,8 +224,8 @@ class ClubFinderTest {
             HashCache(File(tmp.root, "h2.tsv")), RomLinks(File(tmp.root, "l2.json")), open = { files[it.fileName] })
         assertTrue(offline.find(pick, listOf(game("a.gba", gameRom))) is FindResult.NoHashList)
 
-        val wii = pick.copy(title = "Super Mario Galaxy (Wii)")
-        assertTrue(finder().find(wii, listOf(game("a.iso", gameRom))) is FindResult.Unsupported)
+        val wiiU = pick.copy(title = "Pikmin 3 (Wii U)")
+        assertTrue(finder().find(wiiU, listOf(game("a.iso", gameRom))) is FindResult.Unsupported)
         assertTrue(finder().find(pick.copy(title = "Odd (Zork)"), emptyList()) is FindResult.UnknownGame)
     }
 

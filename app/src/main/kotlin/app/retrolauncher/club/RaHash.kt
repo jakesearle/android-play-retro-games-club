@@ -51,6 +51,7 @@ import app.retrolauncher.club.disc.DiscHash
 import app.retrolauncher.club.disc.GameCube
 import app.retrolauncher.club.disc.Gcz
 import app.retrolauncher.club.disc.Rvz
+import app.retrolauncher.club.disc.Wii
 import app.retrolauncher.club.disc.TrackChoice
 import java.io.ByteArrayInputStream
 import java.io.IOException
@@ -90,7 +91,7 @@ interface RomFile {
  *
  * Disc consoles are hashed by [DiscHash] and [GameCube]: PlayStation, PlayStation 2, Sega CD,
  * Saturn, PC Engine CD and Dreamcast (CHD, CUE/BIN, ISO, GDI, M3U), PSP (ISO, CSO, PBP) and
- * GameCube (ISO/GCM, RVZ/WIA, GCZ). Others (Wii, 3DO, Neo Geo CD, ...) aren't
+ * GameCube (ISO/GCM, RVZ/WIA, GCZ) and Wii discs (ISO, RVZ/WIA, GCZ). Others (WiiWare, 3DO, Neo Geo CD, ...) aren't
  * supported: [supports] returns false and the caller falls back to a ROM the user picks.
  */
 object RaHash {
@@ -119,8 +120,9 @@ object RaHash {
     private val DISC = setOf(
         RaConsoles.PLAYSTATION, RaConsoles.PLAYSTATION_2, RaConsoles.SEGA_CD, RaConsoles.SATURN,
         RaConsoles.PC_ENGINE_CD, RaConsoles.DREAMCAST, RaConsoles.PSP, RaConsoles.GAMECUBE,
+        RaConsoles.WII,
     )
-    /** Compressed GameCube images that can't be read yet (RVZ, WIA and GCZ can). */
+    /** Compressed GameCube and Wii images that can't be read yet (RVZ, WIA and GCZ can). */
     private val COMPRESSED_GAMECUBE = setOf("wbfs", "ciso")
 
     private val DISC_IMAGES = setOf("chd", "cue", "iso", "bin", "img", "m3u", "gdi", "cso", "gcm", "pbp", "rvz", "wia", "gcz")
@@ -137,7 +139,7 @@ object RaHash {
     fun hash(consoleId: Int, file: RomFile): String? {
         if (!supports(consoleId)) return null
         val ext = file.name.substringAfterLast('.', "").lowercase()
-        if (consoleId == RaConsoles.GAMECUBE && ext in COMPRESSED_GAMECUBE) throw UnreadableFormatException(ext.uppercase())
+        if ((consoleId == RaConsoles.GAMECUBE || consoleId == RaConsoles.WII) && ext in COMPRESSED_GAMECUBE) throw UnreadableFormatException(ext.uppercase())
         if (consoleId == ARCADE) return arcade(file)
         if (consoleId in DISC) return disc(consoleId, file)
         if (file.name.endsWith(".zip", ignoreCase = true)) {
@@ -169,6 +171,13 @@ object RaHash {
                 // Dolphin's compressed formats, read as the plain disc.
                 "rvz", "wia" -> file.openChannel()?.let { Rvz(it) }?.use { GameCube.hash(it) }
                 "gcz" -> file.openChannel()?.let { Gcz(it) }?.use { GameCube.hash(it::read) }
+                else -> null
+            }
+            RaConsoles.WII -> when (ext) {
+                "iso" -> file.openChannel()?.use { Wii.hash(it) }
+                // Read as the original disc: Wii partitions are re-encrypted.
+                "rvz", "wia" -> file.openChannel()?.let { Rvz(it) }?.use { Wii.hash(it) }
+                "gcz" -> file.openChannel()?.let { Gcz(it) }?.use { Wii.hash(it::read) }
                 else -> null
             }
             // A PBP bundles the game's files; rcheevos hashes all of it.

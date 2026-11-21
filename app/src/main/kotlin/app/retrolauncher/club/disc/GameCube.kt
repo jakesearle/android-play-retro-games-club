@@ -23,21 +23,30 @@ object GameCube {
     fun hash(read: (Long, Int) -> ByteArray): String? {
         if (be32(read(0x1C, 4), 0) != MAGIC) return null
         val md = MessageDigest.getInstance("MD5")
-        val sizes = read((BASE_HEADER_SIZE + 0x14).toLong(), 8)
-        if (sizes.size < 8) return null
+        if (!partition(md, read, 0, 0)) return null
+        return md.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * Adds a GameCube-style partition at [partOffset] to [md]: its header and apploader, then
+     * main.dol's segments. Wii partitions store offsets divided by four ([shift] 2).
+     */
+    internal fun partition(md: MessageDigest, read: (Long, Int) -> ByteArray, partOffset: Long, shift: Int): Boolean {
+        val sizes = read(partOffset + BASE_HEADER_SIZE + 0x14, 8)
+        if (sizes.size < 8) return false
         val headerSize = minOf(BASE_HEADER_SIZE.toLong() + 0x20 + u32(sizes, 0) + u32(sizes, 4), MAX_HEADER_SIZE.toLong()).toInt()
-        val header = read(0, headerSize)
-        if (header.size < 0x424) return null
+        val header = read(partOffset, headerSize)
+        if (header.size < 0x424) return false
         md.update(header)
 
-        val dolOffset = u32(header, 0x420)
-        val table = read(dolOffset, 0xD8)
-        if (table.size < 0xD8) return null
+        val dolOffset = u32(header, 0x420) shl shift
+        val table = read(partOffset + dolOffset, 0xD8)
+        if (table.size < 0xD8) return false
         for (i in 0 until 18) {
-            val offset = u32(table, i * 4)
-            var remaining = u32(table, 0x90 + i * 4)
+            val offset = u32(table, i * 4) shl shift
+            var remaining = u32(table, 0x90 + i * 4) shl shift
             if (remaining == 0L) continue
-            var at = offset
+            var at = partOffset + offset
             while (remaining > 0) {
                 val chunk = read(at, minOf(remaining, CHUNK.toLong()).toInt())
                 if (chunk.isEmpty()) break
@@ -46,12 +55,12 @@ object GameCube {
                 remaining -= chunk.size
             }
         }
-        return md.digest().joinToString("") { "%02x".format(it) }
+        return true
     }
 
     private const val CHUNK = 1024 * 1024
 
-    private fun read(channel: SeekableByteChannel, position: Long, size: Int): ByteArray {
+    internal fun read(channel: SeekableByteChannel, position: Long, size: Int): ByteArray {
         if (size <= 0 || position < 0 || position >= channel.size()) return ByteArray(0)
         val buf = ByteBuffer.allocate(minOf(size.toLong(), channel.size() - position).toInt())
         channel.position(position)
@@ -61,5 +70,5 @@ object GameCube {
 
     private fun be32(b: ByteArray, i: Int) = if (b.size < i + 4) 0 else
         ((b[i].toInt() and 0xFF) shl 24) or ((b[i + 1].toInt() and 0xFF) shl 16) or ((b[i + 2].toInt() and 0xFF) shl 8) or (b[i + 3].toInt() and 0xFF)
-    private fun u32(b: ByteArray, i: Int) = be32(b, i).toLong() and 0xFFFFFFFFL
+    internal fun u32(b: ByteArray, i: Int) = be32(b, i).toLong() and 0xFFFFFFFFL
 }
