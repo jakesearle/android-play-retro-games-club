@@ -379,3 +379,16 @@ class RetroArchCoresTest {
         assertEquals("yabause", app.retrolauncher.launch.RetroArchCores.coreName(catalogue, players[2])) // from the core file
     }
 }
+
+class UpdateVersionTest {
+    @Test
+    fun `newer versions compare by number, part by part`() {
+        val newer = app.retrolauncher.launch.UpdateCheck::isNewer
+        assertEquals(true, newer("0.2.0", "0.1.0"))
+        assertEquals(true, newer("0.10.0", "0.9.3"))
+        assertEquals(true, newer("1.0", "0.99.99"))
+        assertEquals(false, newer("0.1.0", "0.1.0"))
+        assertEquals(false, newer("0.1", "0.1.0"))
+        assertEquals(false, newer("0.1.0", "0.2.0"))
+    }
+}

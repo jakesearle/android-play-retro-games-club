@@ -34,6 +34,8 @@ import app.retrolauncher.launch.GameLauncher
 import app.retrolauncher.launch.PlayerChooser
 import app.retrolauncher.launch.PlayerOption
 import app.retrolauncher.launch.Settings
+import app.retrolauncher.launch.AppUpdate
+import app.retrolauncher.launch.UpdateCheck
 import app.retrolauncher.library.Game
 import app.retrolauncher.library.LibraryScanner
 import app.retrolauncher.library.RomFiles
@@ -119,6 +121,8 @@ data class ClubState(
     val scan: ScanProgress? = null,
     /** A hack was just saved in a Hacks folder for the first time: explain Cocoon's sub-folder setting. */
     val cocoonTip: Boolean = false,
+    /** A newer release of this app on GitHub, if there is one. */
+    val update: AppUpdate? = null,
 )
 
 /** RetroAchievements: who's signed in, and what the Web API has said. */
@@ -220,6 +224,12 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<ClubState> = _state
 
     init {
+        // A newer release on GitHub? Checked once a day.
+        viewModelScope.launch {
+            val current = runCatching { app.packageManager.getPackageInfo(app.packageName, 0).versionName }.getOrNull().orEmpty()
+            val update = withContext(Dispatchers.IO) { UpdateCheck(app).check(current) }
+            _state.update { it.copy(update = update) }
+        }
         // Which romhacks have patches (RetroAchievements' RAPatches), checked once a day.
         viewModelScope.launch {
             patchIndex = withContext(Dispatchers.IO) { raPatches.load() }

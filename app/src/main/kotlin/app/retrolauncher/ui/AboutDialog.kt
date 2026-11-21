@@ -42,7 +42,7 @@ object ClubLinks {
 
 /** Settings › About: the version, what the app sends where, the club's links, and the licences. */
 @Composable
-fun AboutDialog(onOpenUrl: (String) -> Unit, onDismiss: () -> Unit) {
+fun AboutDialog(update: app.retrolauncher.launch.AppUpdate?, onOpenUrl: (String) -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
@@ -53,19 +53,23 @@ fun AboutDialog(onOpenUrl: (String) -> Unit, onDismiss: () -> Unit) {
     PadDialog(title = "About", onDismiss = onDismiss, focus = first, wide = true) {
         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
             Message(
-                "Play Retro Games Club, version $version. Not affiliated with Joey's Retro Handhelds, " +
-                    "the Play Retro Games Club or RetroAchievements."
+                "PRGC Launcher, version $version" + (update?.let { " (version ${it.version} is available)" } ?: "") +
+                    ". Not affiliated with Joey's Retro Handhelds, the Play Retro Games Club or RetroAchievements."
             )
             Message(
                 "Privacy: no analytics, ads or tracking. The app only talks to the club's site (its picks " +
                     "and their art), RetroAchievements (ROM lists, box art and, if you sign in, your progress) " +
-                    "and GitHub (emulator lists). Your RetroAchievements key stays on this device, encrypted."
+                    "and GitHub (emulator lists, romhack patches and checking for a new version). Your RetroAchievements key " +
+                    "stays on this device, encrypted."
             )
             FocusRow(onClick = { onOpenUrl(ClubLinks.DISCORD) }, modifier = Modifier.focusRequester(first)) { f ->
                 RowText("Club Discord", f, "Chat about the picks with the club.")
             }
             FocusRow(onClick = { onOpenUrl(ClubLinks.LEADERBOARD) }) { f ->
                 RowText("Club leaderboard", f, "On the club's page.")
+            }
+            FocusRow(onClick = { onOpenUrl(app.retrolauncher.launch.UpdateCheck.REPO + "/releases") }) { f ->
+                RowText("Releases", f, "What's new in each version, on GitHub.")
             }
             FocusRow(onClick = { licencesOpen = true }) { f ->
                 RowText("Licences", f, "This app's licence, and the code and libraries it uses.")

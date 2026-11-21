@@ -192,6 +192,7 @@ fun MenuDialog(
     onRetroAchievements: () -> Unit,
     onAbout: () -> Unit,
     onShareReport: () -> Unit,
+    onUpdate: () -> Unit,
     showMessage: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -201,6 +202,13 @@ fun MenuDialog(
 
     PadDialog(title = "Settings", onDismiss = onDismiss, focus = first, wide = true) {
         LazyColumn(Modifier.weight(1f, fill = false)) {
+            state.update?.let { update ->
+                item {
+                    FocusRow(onClick = onUpdate) { f ->
+                        RowText("Version ${update.version} is available…", f, "Opens it in Obtainium to update, or the release page if Obtainium isn't installed.")
+                    }
+                }
+            }
             item {
                 FocusRow(onClick = { vm.refresh(); onDismiss() }, modifier = Modifier.focusRequester(first)) { f ->
                     RowText("Refresh games", f, "Asks the club's site for its current picks and searches again.")

@@ -333,6 +333,7 @@ fun ClubScreen(
             onRequestAllFiles = { menuOpen = false; onRequestAllFiles() },
             onRetroAchievements = { menuOpen = false; raOpen = true },
             onAbout = { menuOpen = false; aboutOpen = true },
+            onUpdate = { state.update?.let { onOpenLink(app.retrolauncher.launch.UpdateCheck.OBTAINIUM_LINK, it.url) } },
             onShareReport = {
                 menuOpen = false
                 scope.launch {
@@ -356,7 +357,7 @@ fun ClubScreen(
         )
     }
     if (state.cocoonTip) CocoonTipDialog(onDismiss = vm::dismissCocoonTip)
-    if (aboutOpen) AboutDialog(onOpenUrl = onOpenUrl, onDismiss = { aboutOpen = false })
+    if (aboutOpen) AboutDialog(update = state.update, onOpenUrl = onOpenUrl, onDismiss = { aboutOpen = false })
     if (raOpen) {
         RaSignInDialog(vm, state.ra, onOpenUrl = onOpenUrl, showMessage = showMessage, onDismiss = { raOpen = false })
     }
