@@ -17,6 +17,13 @@ follows this repository's GitHub releases, or download the APK from the
 
 Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or RetroAchievements.
 
+| | |
+|---|---|
+| ![The club's current picks, with time left and trophies for beaten games](docs/screenshots/home.png) | ![A game view: the club's stats, your RetroAchievements progress, and Play](docs/screenshots/game.png) |
+| ![History of past picks, here romhacks, one ready to patch](docs/screenshots/history.png) | ![A romhack made from a base ROM, with the versions RetroAchievements supports](docs/screenshots/romhack.png) |
+
+![Sort and filter History by type, ROM, progress and console](docs/screenshots/filter.png)
+
 ## How it works
 
 - **The club's picks** come from the club's page, read the same way as the
