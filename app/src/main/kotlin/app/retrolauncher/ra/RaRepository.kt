@@ -75,6 +75,9 @@ class RaRepository(
         return runCatching { (Json.parseToJsonElement(file.readText()) as JsonObject).int("NumDistinctPlayers") }.getOrNull()
     }
 
+    /** The files RetroAchievements supports for [gameId] (not cached: asked for when a hack is made). */
+    fun supportedFiles(account: RaAccount, gameId: Int): List<RaSupportedFile> = api.supportedFiles(account, gameId)
+
     /** Forgets everything (signing out). */
     @Synchronized
     fun clear() {

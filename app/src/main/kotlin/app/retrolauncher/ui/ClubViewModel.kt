@@ -41,6 +41,8 @@ import app.retrolauncher.library.RomSource
 import app.retrolauncher.library.SafPaths
 import app.retrolauncher.club.RaHash
 import app.retrolauncher.club.patch.BaseRoms
+import app.retrolauncher.club.patch.PatchEntry
+import app.retrolauncher.club.patch.PatchOrder
 import app.retrolauncher.club.patch.Patcher
 import app.retrolauncher.club.patch.RaPatch
 import app.retrolauncher.club.patch.RaPatchesRepository
@@ -762,29 +764,40 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
                 val wanted = hashLibrary.hashesFor(console.id, row.pick.gameId)
                     ?: return@withContext "Couldn't download RetroAchievements' list of ${console.name} ROMs. Connect to Wi-Fi and try again."
 
+                // Signed in, RetroAchievements says which patched file it supports, so that patch is tried first.
+                val supported = raAccount?.let { account ->
+                    runCatching { raRepo.supportedFiles(account, row.pick.gameId) }.getOrNull()
+                }.orEmpty().filter { it.patchUrl != null }.map { it.name }
+
                 withContext(Dispatchers.Main) { status("Downloading the patch…") }
-                val archive = try { raPatches.download(patch) } catch (e: java.io.IOException) {
+                val source = try { raPatches.open(patch) } catch (e: java.io.IOException) {
                     return@withContext "Couldn't download the patch. Connect to Wi-Fi and try again."
                 }
                 val out = File(tempDir, "patched.tmp")
                 try {
-                    val patchFiles = RaPatchesRepository.patches(archive)
-                    if (patchFiles.isEmpty()) return@withContext "The patch archive has no patch this app can apply."
-                    withContext(Dispatchers.Main) { status("Patching…") }
+                    val entries = PatchOrder.order(source.entries, supported)
+                    if (entries.isEmpty()) return@withContext "The patch archive has no patch this app can apply."
+                    // Each patch is downloaded the first time it's tried, then kept for the other base ROMs.
+                    val read = HashMap<PatchEntry, ByteArray>()
                     for (base in bases) {
-                        val source = sourceOf(base) ?: continue
-                        val (innerName, buffer) = source
+                        val (innerName, buffer) = sourceOf(base) ?: continue
                         val crc by lazy { Patcher.crc32(buffer) }
                         val ext = innerName.substringAfterLast('.', "bin")
-                        for (file in patchFiles) {
-                            val required = Patcher.requiredSourceCrc(file.format, file.bytes)
+                        for (entry in entries) {
+                            val bytes = read.getOrPut(entry) {
+                                withContext(Dispatchers.Main) { status("Downloading the patch…") }
+                                try { source.read(entry) } catch (_: java.io.IOException) { ByteArray(0) }
+                            }
+                            if (bytes.isEmpty()) continue
+                            val required = Patcher.requiredSourceCrc(entry.format, bytes)
                             if (required != null && required != crc) continue
+                            withContext(Dispatchers.Main) { status("Patching…") }
                             try {
-                                Patcher.apply(file.format, file.bytes, buffer, out)
+                                Patcher.apply(entry.format, bytes, buffer, out)
                             } catch (_: java.io.IOException) {
                                 continue
                             }
-                            val name = file.name.substringBeforeLast('.') + "." + ext
+                            val name = entry.name.substringBeforeLast('.') + "." + ext
                             val hash = runCatching { RaHash.hash(console.id, FileRom(name, out)) }.getOrNull()
                             if (hash == null || hash !in wanted) continue
                             withContext(Dispatchers.Main) { status("Saving…") }
@@ -798,6 +811,7 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
                                     cocoonTip = s.cocoonTip || (saved.inHacks && !settings.cocoonTipShown),
                                 )
                             }
+                            android.util.Log.i("PRGC", "made ${row.pick.gameId} with ${entry.name}; read ${read.size} of ${entries.size} patches")
                             return@withContext "Made ${row.pick.displayTitle} from ${base.fileName}" +
                                 (if (saved.inHacks) ", saved in Hacks." else ", saved next to it.")
                         }
@@ -807,7 +821,7 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (e: java.io.IOException) {
                     "Couldn't make it: ${e.message}"
                 } finally {
-                    archive.delete()
+                    source.close()
                     out.delete()
                 }
             }

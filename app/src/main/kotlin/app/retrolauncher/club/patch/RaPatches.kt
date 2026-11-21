@@ -64,13 +64,45 @@ class RaPatchesRepository(
         return runCatching { parse(listFile.readText()) }.getOrDefault(emptyMap()).also { if (it.isNotEmpty()) index = it }
     }
 
+    /**
+     * The archive's patches, read so that as little as possible is downloaded: a zip piece by
+     * piece (only the patches that get used), anything else by downloading it whole.
+     */
+    fun open(patch: RaPatch): PatchSource {
+        if (patch.path.endsWith(".zip", ignoreCase = true)) {
+            try {
+                return RemoteZip { start, end -> rangeOf(urlOf(patch), start, end) }
+            } catch (_: IOException) {
+                // No byte ranges (or not a readable zip): fall back to the whole file.
+            }
+        }
+        return LocalArchive(download(patch))
+    }
+
+    private fun urlOf(patch: RaPatch) =
+        RAW_URL + patch.path.split('/').joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
+
+    /** Bytes [start, end) of [url]; a negative start asks for the last -start bytes. Needs a 206 answer. */
+    private fun rangeOf(url: String, start: Long, end: Long): ByteArray {
+        val c = URL(url).openConnection() as HttpURLConnection
+        try {
+            c.connectTimeout = 15_000
+            c.readTimeout = 60_000
+            c.setRequestProperty("User-Agent", "PRGC-Launcher")
+            c.setRequestProperty("Range", if (start < 0) "bytes=$start" else "bytes=$start-${end - 1}")
+            if (c.responseCode != 206) throw IOException("No byte ranges (HTTP ${c.responseCode})")
+            return c.inputStream.use { it.readBytes() }
+        } finally {
+            c.disconnect()
+        }
+    }
+
     /** Downloads [patch]'s archive into the cache and returns its file (the caller deletes it). */
     fun download(patch: RaPatch): File {
         dir.mkdirs()
         val file = File(dir, "archive-" + patch.fileName)
         val tmp = File(dir, file.name + ".part")
-        val url = RAW_URL + patch.path.split('/').joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
-        fetch(url).use { input -> tmp.outputStream().use { input.copyTo(it) } }
+        fetch(urlOf(patch)).use { input -> tmp.outputStream().use { input.copyTo(it) } }
         if (!tmp.renameTo(file)) { file.delete(); tmp.renameTo(file) }
         return file
     }

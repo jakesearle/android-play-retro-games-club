@@ -43,7 +43,8 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   app downloads the hack's patch from RetroAchievements'
   [RAPatches](https://github.com/RetroAchievements/RAPatches) (BPS, IPS or xdelta), applies
   it, and keeps the result only if RetroAchievements recognises it as that hack (the newest
-  such version, when there are several). It's saved next to the base ROM, or in that
+  such version, when there are several). Signed in, RetroAchievements' list of supported
+  files says which patch to use, and only that patch is downloaded, not the whole archive. It's saved next to the base ROM, or in that
   folder's `Hacks` subfolder if there is one.
 - **Your own marks** cover what RetroAchievements can't know: mark a game
   *Completed somewhere else* (counts as beaten) or *Did not finish* from its

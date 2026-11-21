@@ -80,6 +80,9 @@ data class RaGame(
     }
 }
 
+/** A file RetroAchievements supports for a game: its hash, its name, and its patch, if it's a hack. */
+data class RaSupportedFile(val md5: String, val name: String, val patchUrl: String?)
+
 /** The key or username was refused (HTTP 401 or 403). */
 class RaAuthException : IOException("RetroAchievements refused the username or Web API key")
 
@@ -120,6 +123,18 @@ class RaApi(private val get: (String) -> Pair<Int, String> = ::httpGet) {
     /** One game's achievements, player count and your progress (API_GetGameInfoAndUserProgress). */
     fun game(account: RaAccount, gameId: Int): RaGame =
         parseGame(request("API_GetGameInfoAndUserProgress", account, "u" to account.user, "g" to "$gameId", "a" to "1"))
+
+    /**
+     * The files RetroAchievements supports for a game (API_GetGameHashes): for a romhack, each
+     * patched ROM's name matches its patch's name in RAPatches, which says which patch to use.
+     */
+    fun supportedFiles(account: RaAccount, gameId: Int): List<RaSupportedFile> {
+        val results = request("API_GetGameHashes", account, "i" to "$gameId")["Results"] as? JsonArray ?: return emptyList()
+        return results.mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            RaSupportedFile(o.str("MD5") ?: return@mapNotNull null, o.str("Name").orEmpty(), o.str("PatchUrl"))
+        }
+    }
 
     private fun request(endpoint: String, account: RaAccount, vararg params: Pair<String, String>): JsonObject {
         val query = (params.toList() + ("y" to account.key)).joinToString("&") { (k, v) -> "$k=" + URLEncoder.encode(v, "UTF-8") }
