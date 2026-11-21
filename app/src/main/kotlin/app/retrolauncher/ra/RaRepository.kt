@@ -78,6 +78,23 @@ class RaRepository(
     /** The files RetroAchievements supports for [gameId] (not cached: asked for when a hack is made). */
     fun supportedFiles(account: RaAccount, gameId: Int): List<RaSupportedFile> = api.supportedFiles(account, gameId)
 
+    /** A console's games with achievements, as (ID, title); kept [GAME_LIST_MAX_AGE_MS], the cache offline. */
+    fun gameList(account: RaAccount, consoleId: Int): List<Pair<Int, String>> {
+        val file = File(dir, "games-$consoleId.json")
+        val fresh = file.exists() && clock() - file.lastModified() <= GAME_LIST_MAX_AGE_MS
+        if (!fresh) {
+            try {
+                val json = api.gameListJson(account, consoleId)
+                if (RaApi.parseGameList(json).isNotEmpty()) write(file, json)
+            } catch (e: RaAuthException) {
+                throw e
+            } catch (_: Exception) {
+                // Offline: use the older list, if any.
+            }
+        }
+        return runCatching { RaApi.parseGameList(file.readText()) }.getOrDefault(emptyList())
+    }
+
     /** Forgets everything (signing out). */
     @Synchronized
     fun clear() {
@@ -114,5 +131,6 @@ class RaRepository(
         const val PROGRESS_MAX_AGE_MS = 3L * 60 * 1000
         const val GAME_MAX_AGE_MS = 10L * 60 * 1000
         const val PLAYERS_MAX_AGE_MS = 7L * 24 * 60 * 60 * 1000
+        const val GAME_LIST_MAX_AGE_MS = 7L * 24 * 60 * 60 * 1000
     }
 }

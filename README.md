@@ -46,6 +46,9 @@ Not affiliated with Joey’s Retro Handhelds, the Play Retro Games Club or Retro
   such version, when there are several). Signed in, RetroAchievements' list of supported
   files says which patch to use, and only that patch is downloaded, not the whole archive. It's saved next to the base ROM, or in that
   folder's `Hacks` subfolder if there is one.
+- **For a missing game**, its game view lists the file names RetroAchievements supports
+  (when you're signed in), so you know which version to look for; for a romhack, the
+  patched files and the base game's ROMs it's made from.
 - **Your own marks** cover what RetroAchievements can't know: mark a game
   *Completed somewhere else* (counts as beaten) or *Did not finish* from its
   game view. A beaten or mastered award on RetroAchievements takes precedence.

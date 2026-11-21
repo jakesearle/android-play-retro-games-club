@@ -98,6 +98,8 @@ fun GameView(
     val pick = row.pick
     // Signed in: this game's achievements and your progress, for the summary and "next" line.
     LaunchedEffect(pick.gameId, ra.user) { vm.loadRaGame(pick.gameId) }
+    // A missing game: which versions RetroAchievements supports, so you know what to look for.
+    LaunchedEffect(pick.gameId, ra.user, row.state) { if (row.state == PickState.MISSING) vm.loadSupported(pick) }
     val raGame = ra.games[pick.gameId]
     val raProgress = raGame?.progress ?: ra.progress[pick.gameId]
     val art by rememberBoxArt(pick.imageUrl)
@@ -235,6 +237,7 @@ fun GameView(
                     statusLine(row, vm, revision, hasSources),
                     Modifier.weight(1f),
                     next = raGame?.nextToBeat()?.let { "Next towards beating it: ${it.title}. ${it.description}".trim() },
+                    supported = supportedText(row, ra),
                 )
             }
         }
@@ -327,6 +330,23 @@ private fun RaSummary(progress: app.retrolauncher.ra.RaProgress?, players: Int?,
     }
 }
 
+/**
+ * For a missing game, the file names RetroAchievements supports, like its "Supported Game Files"
+ * list; for a romhack, the patched files and the base game's ROMs it's made from.
+ */
+private fun supportedText(row: PickRow, ra: RaState): String? {
+    if (row.state != PickState.MISSING) return null
+    if (ra.user == null) return "Sign in to RetroAchievements (Settings › RetroAchievements) to see which versions of this game it supports."
+    val files = ra.supported[row.pick.gameId] ?: return "Loading the versions RetroAchievements supports…"
+    fun list(names: List<String>) = if (names.isEmpty()) "• (none listed)" else names.joinToString("\n") { "• $it" }
+    return if (files.baseTitle != null) {
+        "Patched files RetroAchievements supports:\n" + list(files.names) +
+            "\n\nMade from ${files.baseTitle}, supported as:\n" + list(files.baseNames)
+    } else {
+        "Versions RetroAchievements supports:\n" + list(files.names)
+    }
+}
+
 /** A note when the file was used anyway, though RetroAchievements doesn't recognise it. */
 private fun noAchievements(row: PickRow, vm: ClubViewModel): String =
     if (vm.playsWithoutAchievements(row)) "\nRetroAchievements doesn't recognize this version, so achievements won't unlock." else ""
@@ -383,7 +403,7 @@ private fun GameStatus(state: PickState) {
  * buttons focuses it when it's long, then up/down scroll it.
  */
 @Composable
-private fun Description(summary: String, details: String, modifier: Modifier, next: String? = null) {
+private fun Description(summary: String, details: String, modifier: Modifier, next: String? = null, supported: String? = null) {
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     var focused by remember { mutableStateOf(false) }
@@ -420,6 +440,10 @@ private fun Description(summary: String, details: String, modifier: Modifier, ne
                 Spacer(Modifier.height(10.dp))
             }
             Text(details, fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
+            if (supported != null) {
+                Spacer(Modifier.height(10.dp))
+                Text(supported, fontSize = 13.sp, lineHeight = 19.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
+            }
         }
     }
 }

@@ -135,7 +135,15 @@ data class RaState(
     val loadingPlayers: Boolean = false,
     /** RA refused the stored key (changed or revoked). */
     val keyRefused: Boolean = false,
+    /** The files RetroAchievements supports, by RA game ID, loaded as game views of missing games open. */
+    val supported: Map<Int, SupportedFiles> = emptyMap(),
 )
+
+/**
+ * The files RetroAchievements supports for a game, by name. For a romhack, also its base game's
+ * (the unpatched ROMs the hack is made from), found by title among the console's games.
+ */
+data class SupportedFiles(val names: List<String>, val baseTitle: String? = null, val baseNames: List<String> = emptyList())
 
 enum class ChoiceScope { GAME, PLATFORM }
 
@@ -808,7 +816,7 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
                             _state.update { s ->
                                 s.withRow(row.pick, updated).copy(
                                     linkCount = links.count(),
-                                    cocoonTip = s.cocoonTip || (saved.inHacks && !settings.cocoonTipShown),
+                                    cocoonTip = s.cocoonTip || (saved.inHacks && !settings.cocoonTipShown && cocoonFound()),
                                 )
                             }
                             android.util.Log.i("PRGC", "made ${row.pick.gameId} with ${entry.name}; read ${read.size} of ${entries.size} patches")
@@ -852,6 +860,16 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         override val parentName: String? = null
         override fun open() = file.inputStream()
         override fun openChannel(): java.nio.channels.SeekableByteChannel = java.io.RandomAccessFile(file, "r").channel
+    }
+
+    /**
+     * Cocoon is set up here: with all-files access, a Cocoon folder at the top of internal storage
+     * or an SD card. The tip about its sub-folder setting is only for people who use it.
+     */
+    private fun cocoonFound(): Boolean {
+        if (!hasAllFilesAccess()) return false
+        val roots = listOf(Environment.getExternalStorageDirectory()) + (File("/storage").listFiles()?.toList().orEmpty())
+        return roots.any { File(it, "Cocoon").isDirectory }
     }
 
     fun dismissCocoonTip() {
@@ -920,6 +938,38 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         raAccounts.clear()
         viewModelScope.launch(Dispatchers.IO) { raRepo.clear() }
         _state.update { it.copy(ra = RaState()) }
+    }
+
+    /**
+     * Loads the file names RetroAchievements supports for [pick] (signed in only), for a missing
+     * game's view: for a romhack in RAPatches, the patched files and its base game's ROMs.
+     */
+    fun loadSupported(pick: ClubPick) {
+        val account = raAccount ?: return
+        val id = pick.gameId
+        if (id <= 0 || id in _state.value.ra.supported) return
+        viewModelScope.launch {
+            val files = withContext(Dispatchers.IO) {
+                try {
+                    val names = raRepo.supportedFiles(account, id).map { it.name }
+                    val patch = patchIndex[id]
+                    val console = pick.console
+                    if (patch == null || console == null) return@withContext SupportedFiles(names)
+                    // The base game: the best title match among the console's games (not other hacks, "~Hack~ …").
+                    val games = raRepo.gameList(account, console.id).filter { !it.second.startsWith("~") && it.first != id }
+                    val base = BaseRoms.candidates(patch.baseTitle, games) { it.second }.firstOrNull()
+                        ?: return@withContext SupportedFiles(names, patch.baseTitle)
+                    val baseNames = raRepo.supportedFiles(account, base.first).filter { it.patchUrl == null }.map { it.name }
+                    SupportedFiles(names, base.second, baseNames)
+                } catch (_: RaAuthException) {
+                    _state.update { it.copy(ra = it.ra.copy(keyRefused = true)) }
+                    null
+                } catch (_: Exception) {
+                    null
+                }
+            } ?: return@launch
+            _state.update { s -> s.copy(ra = s.ra.copy(supported = s.ra.supported + (id to files))) }
+        }
     }
 
     /** Loads a game's achievements and your progress for its game view. */

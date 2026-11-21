@@ -434,8 +434,7 @@ fun CocoonTipDialog(onDismiss: () -> Unit) {
     PadDialog(title = "Saved in the Hacks folder", onDismiss = onDismiss, focus = first, wide = true, hints = { PadHint("A", "OK") }) {
         Message(
             "The hack was saved in that console's Hacks folder. This app plays it from there. To see it in " +
-                "Cocoon as well, turn on Cocoon's option to show games in sub-folders for that console, in Cocoon's " +
-                "settings. (Other apps can't change Cocoon's settings, so it's up to you.)"
+                "Cocoon as well, turn on Cocoon's option to show games in sub-folders for that console, in Cocoon's settings."
         )
         FocusRow(onClick = onDismiss, modifier = Modifier.focusRequester(first)) { f -> RowText("Got it", f) }
     }

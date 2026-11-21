@@ -78,6 +78,17 @@ class RaApiTest {
         assertFalse(progress.getValue(3).started)
     }
 
+    @Test
+    fun `supported files and the console's game list parse`() {
+        val files = RaApi { 200 to """{"Results":[
+            {"MD5":"aa","Name":"Kirby's Halloween Adventure (v1.4) (Kirb-Star).nes","Labels":["rapatches"],"PatchUrl":"https://github.com/RetroAchievements/RAPatches/raw/main/NES/x.zip"},
+            {"MD5":"bb","Name":"Kirby's Adventure (USA).nes","Labels":["nointro"],"PatchUrl":null}]}""" }.supportedFiles(account, 20071)
+        assertEquals(listOf("Kirby's Halloween Adventure (v1.4) (Kirb-Star).nes", "Kirby's Adventure (USA).nes"), files.map { it.name })
+        assertEquals(listOf(true, false), files.map { it.patchUrl != null })
+        val games = RaApi.parseGameList("""[{"Title":"Kirby's Adventure","ID":1729},{"Title":"~Hack~ Kirby's Halloween Adventure","ID":20071}]""")
+        assertEquals(listOf(1729 to "Kirby's Adventure", 20071 to "~Hack~ Kirby's Halloween Adventure"), games)
+    }
+
     @Test(expected = RaAuthException::class)
     fun `a refused key is reported as such`() {
         RaApi { 401 to """{"message":"Unauthenticated."}""" }.completion(account)

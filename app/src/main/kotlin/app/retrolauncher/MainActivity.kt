@@ -110,7 +110,8 @@ class MainActivity : ComponentActivity() {
      * `adb shell am start -n garden.searle.prgc/app.retrolauncher.MainActivity --es debug_pick "Castlevania: Symphony of the Night (PS1)|https://retroachievements.org/game/11240"`,
      * optionally with "|Event label" at the end to pose as that kind of pick (a special, say),
      * or remove them with `--ez debug_clear_picks true`. `--ei debug_make_hack <RA game ID>` runs
-     * Make hack for that pick and logs each step (tag PRGC). Release builds ignore these extras.
+     * Make hack for that pick and logs each step (tag PRGC); `--ei debug_supported <RA game ID>` logs
+     * the files RetroAchievements supports for it. Release builds ignore these extras.
      */
     private fun handleDebugExtras(intent: Intent?) {
         if (intent == null || applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) return
@@ -118,6 +119,14 @@ class MainActivity : ComponentActivity() {
         when {
             intent.getBooleanExtra("debug_clear_picks", false) -> vm.setDebugPicks(emptyList())
             intent.hasExtra("debug_pick") -> vm.setDebugPicks((current + intent.getStringExtra("debug_pick").orEmpty()).distinct())
+            intent.hasExtra("debug_supported") -> {
+                val id = intent.getIntExtra("debug_supported", 0)
+                val row = (vm.state.value.rows + vm.state.value.past).firstOrNull { it.pick.gameId == id }
+                if (row != null) {
+                    vm.loadSupported(row.pick)
+                    window.decorView.postDelayed({ android.util.Log.i("PRGC", "supported $id: ${vm.state.value.ra.supported[id]}") }, 8000)
+                }
+            }
             intent.hasExtra("debug_make_hack") -> {
                 val id = intent.getIntExtra("debug_make_hack", 0)
                 val state = vm.state.value

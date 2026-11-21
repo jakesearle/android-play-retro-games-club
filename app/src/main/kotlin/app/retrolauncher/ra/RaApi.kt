@@ -136,6 +136,15 @@ class RaApi(private val get: (String) -> Pair<Int, String> = ::httpGet) {
         }
     }
 
+    /** A console's games that have achievements, as (RA game ID, title) (API_GetGameList with f=1), as raw JSON. */
+    fun gameListJson(account: RaAccount, consoleId: Int): String {
+        val query = listOf("i" to "$consoleId", "f" to "1", "y" to account.key).joinToString("&") { (k, v) -> "$k=" + URLEncoder.encode(v, "UTF-8") }
+        val (status, body) = get("$BASE/API_GetGameList.php?$query")
+        if (status == 401 || status == 403) throw RaAuthException()
+        if (status !in 200..299) throw IOException("RetroAchievements answered $status")
+        return body
+    }
+
     private fun request(endpoint: String, account: RaAccount, vararg params: Pair<String, String>): JsonObject {
         val query = (params.toList() + ("y" to account.key)).joinToString("&") { (k, v) -> "$k=" + URLEncoder.encode(v, "UTF-8") }
         val (status, body) = get("$BASE/$endpoint.php?$query")
@@ -150,6 +159,13 @@ class RaApi(private val get: (String) -> Pair<Int, String> = ::httpGet) {
 
         /** Where you find your Web API key (the Keys section of your account settings). */
         const val KEY_PAGE = "https://retroachievements.org/controlpanel.php"
+
+        /** API_GetGameList's answer → (game ID, title) pairs. */
+        fun parseGameList(json: String): List<Pair<Int, String>> =
+            (Json.parseToJsonElement(json) as? JsonArray).orEmpty().mapNotNull { e ->
+                val o = e as? JsonObject ?: return@mapNotNull null
+                (o.int("ID") ?: return@mapNotNull null) to o.str("Title").orEmpty()
+            }
 
         fun parseGame(o: JsonObject): RaGame {
             val id = o.int("ID") ?: throw IOException("No such game")
