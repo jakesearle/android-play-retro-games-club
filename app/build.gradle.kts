@@ -15,8 +15,8 @@ android {
         applicationId = "garden.searle.prgc"
         minSdk = 26 // Android 8.0; Retroid Pocket 5 runs Android 13 (API 33)
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         // Android handhelds are ARM; leaving out x86 keeps native libraries (zstd) small.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
