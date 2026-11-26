@@ -35,6 +35,7 @@ import app.retrolauncher.launch.PlayerChooser
 import app.retrolauncher.launch.PlayerOption
 import app.retrolauncher.launch.Settings
 import app.retrolauncher.launch.AppUpdate
+import app.retrolauncher.launch.AppUpdater
 import app.retrolauncher.launch.UpdateCheck
 import app.retrolauncher.library.Game
 import app.retrolauncher.library.LibraryScanner
@@ -123,7 +124,21 @@ data class ClubState(
     val cocoonTip: Boolean = false,
     /** A newer release of this app on GitHub, if there is one. */
     val update: AppUpdate? = null,
+    /** How updating to [update] in the app is going. */
+    val updateStep: UpdateStep = UpdateStep.Idle,
 )
+
+/** Updating the app from Settings: download, then (once allowed) Android's installer. */
+sealed interface UpdateStep {
+    data object Idle : UpdateStep
+    /** [done] of [total] bytes; [total] is 0 when unknown. */
+    data class Downloading(val done: Long, val total: Long) : UpdateStep
+    /** Downloaded and checked; the player has to let this app install apps first. */
+    data object NeedsPermission : UpdateStep
+    /** Handed to Android's installer, which asks the player to confirm. */
+    data object Installing : UpdateStep
+    data class Failed(val message: String) : UpdateStep
+}
 
 /** RetroAchievements: who's signed in, and what the Web API has said. */
 data class RaState(
@@ -183,6 +198,10 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     private val romWriter = RomWriter(app.contentResolver)
     private val tempDir = app.cacheDir
     private val raRepo = RaRepository(File(app.filesDir, "ra"))
+    private val updater = AppUpdater(app)
+    private var updateJob: Job? = null
+    /** The downloaded, checked APK, waiting for the install permission or a retry. */
+    private var updateApk: File? = null
     private var raAccount: RaAccount? = raAccounts.load()
     private var raPlayersJob: Job? = null
     private val finder = ClubFinder(
@@ -229,6 +248,21 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
             val current = runCatching { app.packageManager.getPackageInfo(app.packageName, 0).versionName }.getOrNull().orEmpty()
             val update = withContext(Dispatchers.IO) { UpdateCheck(app).check(current) }
             _state.update { it.copy(update = update) }
+            // Already up to date: an APK downloaded for the update that's now installed is spent.
+            if (update == null) withContext(Dispatchers.IO) { updater.clean() }
+        }
+        // What Android's installer says after an update was handed to it.
+        viewModelScope.launch {
+            AppUpdater.status.collect { status ->
+                val step = when (status) {
+                    AppUpdater.InstallStatus.Waiting -> UpdateStep.Installing
+                    AppUpdater.InstallStatus.Cancelled -> UpdateStep.Idle
+                    is AppUpdater.InstallStatus.Failed -> UpdateStep.Failed(status.message)
+                    AppUpdater.InstallStatus.Idle -> null
+                }
+                if (step != null) _state.update { if (it.updateStep is UpdateStep.Downloading) it else it.copy(updateStep = step) }
+                AppUpdater.acknowledge()
+            }
         }
         // Which romhacks have patches (RetroAchievements' RAPatches), checked once a day.
         viewModelScope.launch {
@@ -707,8 +741,79 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── Folders and permissions ──────────────────────────────────────────────
 
+    // ── Updating the app ─────────────────────────────────────────────────────
+
+    /**
+     * Updates to the release in [ClubState.update]: downloads its APK (with progress), checks it,
+     * then installs it, or waits for the install permission ([UpdateStep.NeedsPermission]) and
+     * carries on when the player comes back from Settings ([onResume]).
+     */
+    fun startUpdate() {
+        val update = _state.value.update ?: return
+        if (updateJob?.isActive == true) return
+        updateJob = viewModelScope.launch {
+            _state.update { it.copy(updateStep = UpdateStep.Downloading(0, update.apkSize)) }
+            val apk = try {
+                withContext(Dispatchers.IO) {
+                    var shown = 0L
+                    updater.download(update, cancelled = { !isActive }) { done, total ->
+                        // A step per 1% (or 256 KB, size unknown) is plenty for the bar.
+                        if (done - shown >= maxOf(total / 100, 256L * 1024) || done == total) {
+                            shown = done
+                            _state.update { it.copy(updateStep = UpdateStep.Downloading(done, total)) }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                val cancelled = !isActive
+                _state.update { it.copy(updateStep = if (cancelled) UpdateStep.Idle else UpdateStep.Failed("Couldn't download it: ${e.message}")) }
+                return@launch
+            }
+            val problem = withContext(Dispatchers.IO) { runCatching { updater.verify(apk) }.getOrElse { "Couldn't read the download." } }
+            if (problem != null) {
+                withContext(Dispatchers.IO) { updater.clean() }
+                _state.update { it.copy(updateStep = UpdateStep.Failed(problem)) }
+                return@launch
+            }
+            updateApk = apk
+            installUpdate()
+        }
+    }
+
+    /** Stops a download in progress. */
+    fun cancelUpdate() {
+        updateJob?.cancel()
+        _state.update { if (it.updateStep is UpdateStep.Downloading) it.copy(updateStep = UpdateStep.Idle) else it }
+    }
+
+    /** Installs the downloaded APK if allowed to; otherwise asks for the permission. Also retries a closed prompt. */
+    fun installUpdate() {
+        val apk = updateApk?.takeIf { it.exists() } ?: return startUpdate()
+        if (!updater.canInstall()) {
+            _state.update { it.copy(updateStep = UpdateStep.NeedsPermission) }
+            return
+        }
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { updater.install(apk) }
+            } catch (e: Exception) {
+                _state.update { it.copy(updateStep = UpdateStep.Failed(e.message ?: "Android couldn't start the install.")) }
+            }
+        }
+    }
+
+    /** Settings' "Install unknown apps" page for this app, to allow the update. */
+    fun updatePermissionIntent() = updater.permissionIntent()
+
+    /** Closing the update dialog keeps a download going, but forgets an answer already seen. */
+    fun dismissUpdateMessage() {
+        _state.update { if (it.updateStep is UpdateStep.Failed) it.copy(updateStep = UpdateStep.Idle) else it }
+    }
+
     /** Call from onResume: apps or permissions may have changed while the user was away. */
     fun onResume() {
+        // Back from allowing installs in Settings: carry on with the update.
+        if (_state.value.updateStep == UpdateStep.NeedsPermission && updater.canInstall()) installUpdate()
         installed.refresh()
         val access = hasAllFilesAccess()
         val changed = access != _state.value.hasAllFilesAccess

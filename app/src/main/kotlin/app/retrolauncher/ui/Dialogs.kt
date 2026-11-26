@@ -205,7 +205,14 @@ fun MenuDialog(
             state.update?.let { update ->
                 item {
                     FocusRow(onClick = onUpdate) { f ->
-                        RowText("Version ${update.version} is available…", f, "Opens it in Obtainium to update, or the release page if Obtainium isn't installed.")
+                        RowText(
+                            "Version ${update.version} is available…",
+                            f,
+                            when (state.updateStep) {
+                                is UpdateStep.Downloading -> "Downloading…"
+                                else -> "See what's new and update, here or with Obtainium."
+                            },
+                        )
                     }
                 }
             }
