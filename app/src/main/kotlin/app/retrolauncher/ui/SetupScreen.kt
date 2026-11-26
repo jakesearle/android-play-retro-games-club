@@ -37,9 +37,10 @@ import androidx.compose.ui.unit.sp
 import app.retrolauncher.library.RomSource
 
 /**
- * First-run setup, four steps: what the app does, choosing the ROMs folder, how the current
+ * First-run setup, five steps: what the app does, choosing the ROMs folder, how the current
  * picks look with the emulators installed (assuming emulators such as RetroArch are already set
- * up), and signing in to RetroAchievements, which can be skipped. B goes back a step. Shown until finished or skipped, while there are no ROM folders
+ * up), Usage Access (so switching RetroArch games only warns when one is open), and signing in to
+ * RetroAchievements. The last two can be skipped. B goes back a step. Shown until finished or skipped, while there are no ROM folders
  * ([shouldShowSetup]).
  */
 @Composable
@@ -48,6 +49,7 @@ fun SetupScreen(
     state: ClubState,
     onAddFolder: () -> Unit,
     onRequestAllFiles: () -> Unit,
+    onRequestUsageAccess: () -> Unit,
     onOpenUrl: (String) -> Unit,
     showMessage: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -82,6 +84,7 @@ fun SetupScreen(
                     0 -> WelcomeStep(first, onStart = { step = 1 }, onSkip = vm::finishSetup)
                     1 -> FolderStep(vm, state, first, onAddFolder, onRequestAllFiles, onContinue = { step = 2 })
                     2 -> EmulatorStep(state, first, onContinue = { step = 3 })
+                    3 -> UsageAccessStep(state, first, onAllow = onRequestUsageAccess, onContinue = { step = 4 })
                     else -> RetroAchievementsStep(state, first, onSignIn = { signInOpen = true }, onDone = vm::finishSetup)
                 }
             }
@@ -96,12 +99,12 @@ fun SetupScreen(
     val windowFocused = LocalWindowInfo.current.isWindowFocused
     val view = LocalView.current
     // Also after the sign-in dialog closes, when the step's first button may have changed.
-    LaunchedEffect(step, windowFocused, state.ra.user) { if (windowFocused) takeControllerFocus(view, first) }
+    LaunchedEffect(step, windowFocused, state.ra.user, state.hasUsageAccess) { if (windowFocused) takeControllerFocus(view, first) }
 
     if (signInOpen) RaSignInDialog(vm, state.ra, onOpenUrl, showMessage, onDismiss = { signInOpen = false })
 }
 
-private const val STEPS = 4
+private const val STEPS = 5
 
 @Composable
 private fun StepTitle(title: String, body: String) {
@@ -209,6 +212,34 @@ private fun EmulatorStep(state: ClubState, first: FocusRequester, onContinue: ()
         modifier = Modifier.padding(top = 8.dp, bottom = 12.dp),
     )
     Choice("Continue", modifier = Modifier.focusRequester(first), onClick = onContinue)
+}
+
+/**
+ * Optional: Usage Access. RetroArch drops an open game, unsaved, when handed a different one, so
+ * the launcher warns first; with Usage Access it can tell when RetroArch is closed and only warns
+ * when a game may really be open (RetroArchSession).
+ */
+@Composable
+private fun UsageAccessStep(state: ClubState, first: FocusRequester, onAllow: () -> Unit, onContinue: () -> Unit) {
+    StepTitle(
+        "Switching RetroArch games",
+        "If you press Home during a RetroArch game, RetroArch keeps it open. Starting a different game " +
+            "then closes it, and any unsaved progress is lost, so the launcher asks first. Usage Access " +
+            "lets it see when RetroArch is closed, so it only asks when a game may still be open. " +
+            "It only reads when apps open and close.",
+    )
+    if (state.hasUsageAccess) {
+        Text("Usage Access is on.", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
+        Choice("Continue", modifier = Modifier.focusRequester(first), onClick = onContinue)
+    } else {
+        Choice(
+            "Allow Usage Access…",
+            "Opens Android's settings: choose PRGC Launcher and turn it on, then come back.",
+            Modifier.focusRequester(first),
+            onAllow,
+        )
+        Choice("Skip", "The launcher asks every time you switch RetroArch games. You can turn it on later from that prompt.", onClick = onContinue)
+    }
 }
 
 /** Optional: sign in to RetroAchievements (the same dialog as in Settings), or skip. */

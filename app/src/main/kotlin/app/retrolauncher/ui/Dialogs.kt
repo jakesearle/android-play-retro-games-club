@@ -475,3 +475,53 @@ internal fun GameMenuDialog(title: String, items: List<MenuItem>, onDismiss: () 
         }
     }
 }
+
+/**
+ * RetroArch may have a game open. Handed a different game, RetroArch exits on the spot without
+ * saving the open one. It may not be the game this app last started (RetroArch's own menu can
+ * load another), so the dialog doesn't name it. Offers to resume it, and, when the launcher
+ * can't tell whether RetroArch is running, how to let it.
+ */
+@Composable
+fun RetroArchSwitchDialog(
+    switch: RetroArchSwitch,
+    onResume: () -> Unit,
+    onStartAnyway: () -> Unit,
+    onUsageAccess: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val first = rememberFirstFocus()
+    val certain = switch.conflict.certain
+    PadDialog(
+        title = if (certain) "RetroArch is still running a game" else "RetroArch may still be running a game",
+        onDismiss = onDismiss,
+        focus = first,
+        wide = true,
+    ) {
+        Message("Starting ${switch.launch.title} closes it. Any unsaved progress will be lost.")
+        LazyColumn(Modifier.weight(1f, fill = false)) {
+            item {
+                FocusRow(onClick = onResume, modifier = Modifier.focusRequester(first)) { f ->
+                    RowText("Resume the open game", f, "To keep your progress, save or quit from RetroArch's menu, then start the new game.")
+                }
+            }
+            item {
+                FocusRow(onClick = onStartAnyway) { f ->
+                    RowText("Start ${switch.launch.title}", f, "Any unsaved progress will be lost.")
+                }
+            }
+            if (!certain) item {
+                FocusRow(onClick = onUsageAccess) { f ->
+                    RowText(
+                        "Let the launcher check…",
+                        f,
+                        "Turn on Usage Access for PRGC Launcher, so it can tell when RetroArch is closed and only asks then.",
+                    )
+                }
+            }
+            item {
+                FocusRow(onClick = onDismiss) { f -> RowText("Cancel", f) }
+            }
+        }
+    }
+}

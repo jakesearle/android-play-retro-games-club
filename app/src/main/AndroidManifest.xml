@@ -14,6 +14,12 @@
     <!-- Settings › Update installs a new release's APK itself (the player allows it once). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Usage Access (the player turns it on in Settings): tells when RetroArch is closed (RetroArchSession). -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions"
+        xmlns:tools="http://schemas.android.com/tools" />
+
     <!-- Android 11+ package visibility: see and launch emulator apps. -->
     <queries>
         <intent>

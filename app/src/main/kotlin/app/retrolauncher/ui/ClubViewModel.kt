@@ -31,6 +31,7 @@ import app.retrolauncher.launch.Recommendation
 import app.retrolauncher.launch.Recommendations
 import app.retrolauncher.launch.RetroArchCores
 import app.retrolauncher.launch.GameLauncher
+import app.retrolauncher.launch.RetroArchSession
 import app.retrolauncher.launch.PlayerChooser
 import app.retrolauncher.launch.PlayerOption
 import app.retrolauncher.launch.Settings
@@ -101,6 +102,8 @@ data class ClubState(
     val status: String? = "Loading the club's games…",
     val sources: List<RomSource> = emptyList(),
     val hasAllFilesAccess: Boolean = false,
+    /** Usage Access is on, so the launcher can tell when RetroArch is closed (RetroArchSession). */
+    val hasUsageAccess: Boolean = false,
     val linkCount: Int = 0,
     /** Changes whenever emulator choices or installed apps change, so the UI recomposes. */
     val revision: Int = 0,
@@ -118,6 +121,8 @@ data class ClubState(
     val marks: Map<Int, PickMark> = emptyMap(),
     /** A chosen file that doesn't match; the home screen asks what to do with it. */
     val unrecognized: UnrecognizedChoice? = null,
+    /** Starting this game would make RetroArch drop the one it has open, unsaved: ask first. */
+    val retroArchSwitch: RetroArchSwitch? = null,
     /** A search that's taking a while, shown in the header with a Stop button; null when idle. */
     val scan: ScanProgress? = null,
     /** A hack was just saved in a Hacks folder for the first time: explain Cocoon's sub-folder setting. */
@@ -173,6 +178,13 @@ sealed interface ChooseOutcome {
     /** RetroAchievements doesn't recognise the file; [ClubState.unrecognized] asks whether to use it anyway. */
     data object Ask : ChooseOutcome
 }
+
+/**
+ * A RetroArch game waiting to start while RetroArch may have [conflict]'s game open. RetroArch
+ * exits without saving when handed a different game, so the player chooses: resume the open
+ * game (and quit it from RetroArch's menu, which saves), or start this one anyway.
+ */
+data class RetroArchSwitch(val row: PickRow, val launch: GameLauncher.Launch, val conflict: RetroArchSession.Conflict)
 
 /** A chosen file RetroAchievements doesn't recognise, waiting for "Use anyway" or another choice. */
 data class UnrecognizedChoice(val row: PickRow, val uri: Uri, val fileName: String)
@@ -233,6 +245,7 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         ClubState(
             sources = settings.sources,
             hasAllFilesAccess = hasAllFilesAccess(),
+            hasUsageAccess = launcher.hasUsageAccess(),
             linkCount = links.count(),
             showSetup = shouldShowSetup(settings.setupDone, settings.sources.isNotEmpty()),
             pastFilter = PastFilter.decode(settings.pastFilter),
@@ -555,13 +568,44 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         val platform = catalogue.platform(game.platformId) ?: return "Unknown platform ${game.platformId}."
         val player = PlayerChooser.pick(catalogue, platform, game, settings.choices(game), installed::isInstalled)
             ?: return noPlayerMessage(catalogue, platform, game)
-        val error = launcher.launch(catalogue, game, player)
+        val (launch, problem) = launcher.prepare(catalogue, game, player)
+        if (launch == null) return problem
+        val conflict = launcher.wouldClose(launch)
+        if (conflict != null) {
+            _state.update { it.copy(retroArchSwitch = RetroArchSwitch(row, launch, conflict)) }
+            return null
+        }
+        return start(row, game, launch)
+    }
+
+    private fun start(row: PickRow, game: Game, launch: GameLauncher.Launch): String? {
+        val error = launcher.start(launch)
         if (error == null && row.pick.gameId > 0) {
             links.save(row.pick.gameId, game)
             _state.update { it.copy(linkCount = links.count()) }
         }
         return error
     }
+
+    /** Starts the waiting game anyway; RetroArch drops the open one. */
+    fun switchRetroArchAnyway(): String? {
+        val switch = _state.value.retroArchSwitch ?: return null
+        _state.update { it.copy(retroArchSwitch = null) }
+        val game = switch.row.game ?: return null
+        return start(switch.row, game, switch.launch)
+    }
+
+    /** Brings back the game RetroArch has open instead. */
+    fun resumeRetroArch(): String? {
+        val switch = _state.value.retroArchSwitch ?: return null
+        _state.update { it.copy(retroArchSwitch = null) }
+        return launcher.resume(switch.conflict.open)
+    }
+
+    fun dismissRetroArchSwitch() = _state.update { it.copy(retroArchSwitch = null) }
+
+    /** Android's Usage Access settings, where the player lets this app see when RetroArch is closed. */
+    fun usageAccessIntent() = launcher.usageAccessIntent()
 
     /** The player chose which of several matching copies to play. */
     fun chooseCopy(row: PickRow, game: Game): String? {
@@ -817,7 +861,7 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         installed.refresh()
         val access = hasAllFilesAccess()
         val changed = access != _state.value.hasAllFilesAccess
-        _state.update { it.copy(hasAllFilesAccess = access, revision = it.revision + 1) }
+        _state.update { it.copy(hasAllFilesAccess = access, hasUsageAccess = launcher.hasUsageAccess(), revision = it.revision + 1) }
         // An emulator may have been installed or removed while the user was away.
         if (changed) checkPicks() else refreshEmulators()
         // The club may have moved on (a new week at midnight UTC) while the launcher stayed open.
