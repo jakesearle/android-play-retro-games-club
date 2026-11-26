@@ -59,7 +59,7 @@ fun AboutDialog(update: app.retrolauncher.launch.AppUpdate?, onOpenUrl: (String)
             Message(
                 "Privacy: no analytics, ads or tracking. The app only talks to the club's site (its picks " +
                     "and their art), RetroAchievements (ROM lists, box art and, if you sign in, your progress) " +
-                    "and GitHub (emulator lists, romhack patches and checking for a new version). Your RetroAchievements key " +
+                    "and GitHub (emulator lists, romhack patches, and checking for and downloading a new version). Your RetroAchievements key " +
                     "stays on this device, encrypted."
             )
             FocusRow(onClick = { onOpenUrl(ClubLinks.DISCORD) }, modifier = Modifier.focusRequester(first)) { f ->

@@ -146,6 +146,7 @@ fun ClubScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var raOpen by remember { mutableStateOf(false) }
     var aboutOpen by remember { mutableStateOf(false) }
+    var updateOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     // The past-picks page. Kept here so it comes back as it was when its game view closes.
@@ -333,7 +334,7 @@ fun ClubScreen(
             onRequestAllFiles = { menuOpen = false; onRequestAllFiles() },
             onRetroAchievements = { menuOpen = false; raOpen = true },
             onAbout = { menuOpen = false; aboutOpen = true },
-            onUpdate = { state.update?.let { onOpenLink(app.retrolauncher.launch.UpdateCheck.OBTAINIUM_LINK, it.url) } },
+            onUpdate = { menuOpen = false; updateOpen = true },
             onShareReport = {
                 menuOpen = false
                 scope.launch {
@@ -357,6 +358,23 @@ fun ClubScreen(
         )
     }
     if (state.cocoonTip) CocoonTipDialog(onDismiss = vm::dismissCocoonTip)
+    val update = state.update
+    if (updateOpen && update != null) {
+        UpdateDialog(
+            update = update,
+            step = state.updateStep,
+            onStart = vm::startUpdate,
+            onCancel = vm::cancelUpdate,
+            onInstall = vm::installUpdate,
+            onAllow = {
+                runCatching { context.startActivity(vm.updatePermissionIntent()) }
+                    .onFailure { showMessage("Couldn't open Android's settings. Allow PRGC Launcher under Install unknown apps.") }
+            },
+            onObtainium = { onOpenLink(app.retrolauncher.launch.UpdateCheck.OBTAINIUM_LINK, update.url) },
+            onReleasePage = { onOpenUrl(update.url) },
+            onDismiss = { updateOpen = false; vm.dismissUpdateMessage() },
+        )
+    }
     if (aboutOpen) AboutDialog(update = state.update, onOpenUrl = onOpenUrl, onDismiss = { aboutOpen = false })
     if (raOpen) {
         RaSignInDialog(vm, state.ra, onOpenUrl = onOpenUrl, showMessage = showMessage, onDismiss = { raOpen = false })

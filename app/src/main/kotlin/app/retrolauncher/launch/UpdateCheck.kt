@@ -3,14 +3,32 @@ package app.retrolauncher.launch
 import android.content.Context
 import androidx.core.content.edit
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** A newer release on GitHub than the one installed. */
-data class AppUpdate(val version: String, val url: String)
+/**
+ * A newer release on GitHub than the one installed.
+ *
+ * @param url the release's page.
+ * @param apkUrl the APK attached to the release, which [AppUpdater] installs; null if it has none.
+ * @param apkSize the APK's size in bytes, or 0 if unknown.
+ * @param notes the release's description (Markdown, as written on GitHub), maybe empty.
+ */
+data class AppUpdate(
+    val version: String,
+    val url: String,
+    val apkUrl: String? = null,
+    val apkSize: Long = 0,
+    val notes: String = "",
+)
+
+/** What [UpdateCheck] keeps from GitHub's latest-release answer. */
+internal data class Release(val tag: String, val url: String, val apkUrl: String?, val apkSize: Long, val notes: String)
 
 /**
  * Asks GitHub for this app's latest release, at most once a day (the answer is kept between
@@ -24,12 +42,16 @@ class UpdateCheck(
     private val prefs = context.getSharedPreferences("updates", Context.MODE_PRIVATE)
 
     fun check(current: String): AppUpdate? {
-        if (clock() - prefs.getLong(CHECKED, 0) > MAX_AGE_MS) {
+        // An answer saved before the APK was kept (FORMAT) is asked for again.
+        if (clock() - prefs.getLong(CHECKED, 0) > MAX_AGE_MS || prefs.getInt(FORMAT_KEY, 0) < FORMAT) {
             try {
-                val o = Json.parseToJsonElement(fetch(LATEST)) as JsonObject
-                val tag = (o["tag_name"] as? JsonPrimitive)?.content
-                val url = (o["html_url"] as? JsonPrimitive)?.content
-                if (tag != null && url != null) prefs.edit { putString(TAG, tag); putString(URL_KEY, url); putLong(CHECKED, clock()) }
+                parseRelease(fetch(LATEST))?.let { r ->
+                    prefs.edit {
+                        putString(TAG, r.tag); putString(URL_KEY, r.url)
+                        putString(APK_URL, r.apkUrl); putLong(APK_SIZE, r.apkSize); putString(NOTES, r.notes)
+                        putLong(CHECKED, clock()); putInt(FORMAT_KEY, FORMAT)
+                    }
+                }
             } catch (_: Exception) {
                 // Offline or rate-limited: keep the last answer.
             }
@@ -37,7 +59,8 @@ class UpdateCheck(
         val tag = prefs.getString(TAG, null) ?: return null
         val url = prefs.getString(URL_KEY, null) ?: return null
         val version = tag.removePrefix("v")
-        return if (isNewer(version, current)) AppUpdate(version, url) else null
+        if (!isNewer(version, current)) return null
+        return AppUpdate(version, url, prefs.getString(APK_URL, null), prefs.getLong(APK_SIZE, 0), prefs.getString(NOTES, null).orEmpty())
     }
 
     companion object {
@@ -49,6 +72,31 @@ class UpdateCheck(
         private const val CHECKED = "checked"
         private const val TAG = "tag"
         private const val URL_KEY = "url"
+        private const val APK_URL = "apk_url"
+        private const val APK_SIZE = "apk_size"
+        private const val NOTES = "notes"
+        private const val FORMAT_KEY = "format"
+        private const val FORMAT = 2
+
+        /**
+         * GitHub's latest-release JSON: its tag, page, release notes and the first `.apk` attached
+         * (releases attach one, `prgc-launcher-0.2.0.apk`). Null without a tag or page.
+         */
+        internal fun parseRelease(json: String): Release? {
+            val o = Json.parseToJsonElement(json) as? JsonObject ?: return null
+            fun JsonObject.text(key: String) = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            val tag = o.text("tag_name") ?: return null
+            val url = o.text("html_url") ?: return null
+            val apk = (o["assets"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+                .firstOrNull { it.text("name")?.endsWith(".apk", ignoreCase = true) == true && it.text("browser_download_url") != null }
+            return Release(
+                tag = tag,
+                url = url,
+                apkUrl = apk?.text("browser_download_url"),
+                apkSize = (apk?.get("size") as? JsonPrimitive)?.longOrNull ?: 0,
+                notes = o.text("body").orEmpty().trim(),
+            )
+        }
 
         /** Whether version [a] ("0.10.1") is newer than [b] ("0.9.3"), comparing numbers part by part. */
         fun isNewer(a: String, b: String): Boolean {

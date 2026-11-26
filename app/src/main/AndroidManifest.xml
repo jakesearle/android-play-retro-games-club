@@ -11,6 +11,9 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
+    <!-- Settings › Update installs a new release's APK itself (the player allows it once). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- Android 11+ package visibility: see and launch emulator apps. -->
     <queries>
         <intent>
@@ -44,6 +47,11 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Hears back from Android's package installer when updating the app. -->
+        <receiver
+            android:name=".launch.InstallReceiver"
+            android:exported="false" />
 
         <activity
             android:name=".MainActivity"
