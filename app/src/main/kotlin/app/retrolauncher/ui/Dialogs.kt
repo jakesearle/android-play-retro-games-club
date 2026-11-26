@@ -149,7 +149,7 @@ fun EmulatorPicker(vm: ClubViewModel, game: Game, title: String, onDismiss: () -
                     selected = option.player.id == current?.id,
                 ) { focused ->
                     RowText(
-                        text = option.player.name + if (option.player.id == current?.id) "  ✓" else "",
+                        text = option.player.label + if (option.player.id == current?.id) "  ✓" else "",
                         detail = option.problem ?: if (option.player.cantResume) "Can't resume" else null,
                         focused = focused,
                         enabled = option.usable,
@@ -452,5 +452,26 @@ fun CocoonTipDialog(onDismiss: () -> Unit) {
                 "Cocoon as well, turn on Cocoon's option to show games in sub-folders for that console, in Cocoon's settings."
         )
         FocusRow(onClick = onDismiss, modifier = Modifier.focusRequester(first)) { f -> RowText("Got it", f) }
+    }
+}
+
+/** A row in the game view's ⋮ menu: what it says, an optional second line, and what A does. */
+internal data class MenuItem(val label: String, val detail: String? = null, val run: () -> Unit)
+
+/** The game view's ⋮ menu. Choosing an item closes the menu, then runs it. */
+@Composable
+internal fun GameMenuDialog(title: String, items: List<MenuItem>, onDismiss: () -> Unit) {
+    val first = rememberFirstFocus()
+    PadDialog(title = title, onDismiss = onDismiss, focus = first, wide = true) {
+        LazyColumn(Modifier.weight(1f, fill = false)) {
+            items.forEachIndexed { i, item ->
+                item {
+                    FocusRow(
+                        onClick = { onDismiss(); item.run() },
+                        modifier = if (i == 0) Modifier.focusRequester(first) else Modifier,
+                    ) { f -> RowText(item.label, f, item.detail) }
+                }
+            }
+        }
     }
 }

@@ -23,7 +23,12 @@ data class ClubPick(
     val raUrl: String,
     val guideUrl: String,
     val stats: List<ClubStat>,
+    /** How many times the club has picked this game; the past list shows a repeat pick once. */
+    val timesPicked: Int = 1,
 ) {
+    /** [event] without a trailing "(Oct 1 - Dec 31)", for showing. */
+    val eventLabel: String get() = event.replace(TRAILING_PARENS, "")
+
     val gameId: Int get() = RaConsoles.gameIdFromUrl(raUrl)
     val console: RaConsoles.Console? get() = RaConsoles.fromTitle(title)
     val displayTitle: String get() = RaConsoles.titleWithoutLabel(title)
@@ -45,6 +50,8 @@ data class ClubPick(
  * they change, parsing finds no picks and the caller reports it instead of showing half-empty
  * screens.
  */
+private val TRAILING_PARENS = Regex("""\s*\([^()]*\)$""")
+
 private val STAT_ORDER = listOf("Rating", "Beaten", "Completed", "Mastered", "Time to beat")
 
 object ClubPage {
@@ -120,7 +127,9 @@ object ClubPage {
             val type = pick.selectFirst(".tag")?.text()?.trim()?.takeIf { it in PAST_TYPES } ?: return@mapNotNull null
             val name = row.selectFirst(".g-main strong")?.text()?.trim().orEmpty().ifEmpty { return@mapNotNull null }
             val sys = row.attr("data-sys").trim()
-            val period = pastPeriod(pick.selectFirst(".g-sub")?.text().orEmpty())
+            val sub = pick.selectFirst(".g-sub")?.text().orEmpty()
+            val period = pastPeriod(sub)
+            val more = MORE.find(sub.trim())?.groupValues?.get(1)?.toIntOrNull() ?: 0
             val image = row.selectFirst(".g-art img")?.absUrl("src").orEmpty()
             val gameId = RA_IMAGE_ID.find(image)?.groupValues?.get(1) ?: return@mapNotNull null
             val beaten = row.attr("data-s-beaten").trim().takeIf { it.isNotEmpty() }
@@ -136,9 +145,13 @@ object ClubPage {
                 raUrl = "https://retroachievements.org/game/$gameId",
                 guideUrl = "",
                 stats = listOfNotNull(rating?.let { ClubStat("Rating", "$it/10") }, beaten?.let { ClubStat("Beaten", it) }),
+                timesPicked = 1 + more,
             )
         }
     }
+
+    /** "March 2026 and 1 more": a game picked more than once. */
+    private val MORE = Regex("""\s+and\s+(\d+)\s+more$""")
 
     private val RA_IMAGE_ID = Regex("""/img/(\d+)\.[A-Za-z]+$""")
 
@@ -149,7 +162,7 @@ object ClubPage {
      * Months ("July 2024") are already the same. A trailing "and 1 more" is dropped.
      */
     internal fun pastPeriod(text: String): String {
-        val p = text.trim().replace(Regex("""\s+and\s+\d+\s+more$"""), "")
+        val p = text.trim().replace(MORE, "")
         fun month(abbr: String) = MONTHS.firstOrNull { it.startsWith(abbr.take(3), ignoreCase = true) }
         PAST_WEEK.find(p)?.let { m ->
             val (startMonth, startDay, endMonth, endDay, year) = m.destructured

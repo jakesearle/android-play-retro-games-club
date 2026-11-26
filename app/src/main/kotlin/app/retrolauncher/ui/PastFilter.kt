@@ -110,6 +110,11 @@ internal val ClubPick.type: PickType? get() = PickType.entries.firstOrNull { eve
 /** When the pick ran, without its type: "November 8 - 14, 2026". */
 internal val ClubPick.period: String get() = type?.let { event.removePrefix(it.label).trim() } ?: event
 
+/** When the pick ran, for its History card: "Q4 2026", "March 2026 and 1 more". */
+internal val ClubPick.periodLabel: String
+    get() = (type?.let { eventLabel.removePrefix(it.label).trim() } ?: eventLabel) +
+        if (timesPicked > 1) " and ${timesPicked - 1} more" else ""
+
 /** A ROM was found for the pick (whether or not it can be played yet). */
 internal val PickRow.hasRom: Boolean
     get() = state == PickState.READY || state == PickState.NO_EMULATOR || state == PickState.CHOOSE_COPY

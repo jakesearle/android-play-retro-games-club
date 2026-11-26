@@ -94,6 +94,9 @@ data class Player(
     val extra: PlayerExtra? = null,
 ) {
     val cantResume: Boolean get() = extra?.cantResume == true
+
+    /** [name] for showing: "RetroArch - mgba" rather than "RetroArch (64 bits) - mgba". */
+    val label: String get() = name.replace(" (64 bits)", "")
 }
 
 @Serializable

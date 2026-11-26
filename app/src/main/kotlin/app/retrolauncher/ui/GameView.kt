@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -30,7 +31,6 @@ import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Create
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -110,16 +110,15 @@ fun GameView(
     var copiesOpen by remember { mutableStateOf(false) }
     var getEmulatorOpen by remember { mutableStateOf(false) }
     var helpOpen by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
     val help = remember(row, revision) { helpTopics(row, vm) }
 
     val actions = buildList {
         // No emulator for this game (or its console): getting one comes first.
         if (vm.needsEmulator(row)) add(Action("Get emulator", Icons.Filled.AddCircle) { getEmulatorOpen = true })
         when (row.state) {
-            PickState.READY -> {
-                add(Action("Play", Icons.Filled.PlayArrow, primary = true) { onPlay() })
-                add(Action("Emulator", Icons.Filled.Build) { pickerOpen = true })
-            }
+            // With a working emulator, changing it is in the ⋮ menu.
+            PickState.READY -> add(Action("Play", Icons.Filled.PlayArrow, primary = true) { onPlay() })
             PickState.NO_EMULATOR -> add(Action("Emulator", Icons.Filled.Build) { pickerOpen = true })
             PickState.CHOOSE_COPY -> add(Action("Choose copy", Icons.AutoMirrored.Filled.List) { copiesOpen = true })
             PickState.MISSING -> {
@@ -141,9 +140,18 @@ fun GameView(
         }
         if (pick.raUrl.isNotEmpty()) add(Action("RetroAchievements", Icons.Filled.Star) { onOpenUrl(pick.raUrl) })
         if (pick.guideUrl.isNotEmpty()) add(Action("Guide", Icons.Filled.Info) { onOpenUrl(pick.guideUrl) })
-        if (pick.gameId > 0) add(Action("Mark as…", Icons.Filled.Edit) { markOpen = true })
+    }
+    // The ⋮ menu: less-used things to do with the game.
+    val player = if (row.state == PickState.READY) row.game?.let(vm::playerFor) else null
+    val menu = buildList {
+        if (row.state == PickState.READY) {
+            add(MenuItem("Emulator…", player?.let { "Plays in ${it.label}" }) { pickerOpen = true })
+        }
+        if (pick.gameId > 0) add(MenuItem("Mark as…", mark?.let { "Marked: ${it.label}" }) { markOpen = true })
     }
     val firstButton = remember { FocusRequester() }
+    // The page below the header scrolls as one, box art, buttons and text together.
+    val page = rememberScrollState()
 
     Column(
         modifier
@@ -152,6 +160,7 @@ fun GameView(
             .onPad { pad ->
                 when (pad) {
                     Pad.X -> { onPlay(); true }
+                    Pad.START -> if (menu.isNotEmpty()) { menuOpen = true; true } else false
                     Pad.B -> { onBack(); true }
                     Pad.L1 -> onPrevious?.let { it(); true } ?: false
                     Pad.R1 -> onNext?.let { it(); true } ?: false
@@ -159,11 +168,14 @@ fun GameView(
                 }
             },
     ) {
-        Header(status = null, title = pick.event, onHelp = if (help.isNotEmpty()) ({ helpOpen = true }) else null)
+        Header(status = null, title = pick.eventLabel, onHelp = if (help.isNotEmpty()) ({ helpOpen = true }) else null,
+            onMenu = if (menu.isNotEmpty()) ({ menuOpen = true }) else null,
+        )
         Row(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .verticalScroll(page)
                 .padding(horizontal = 24.dp, vertical = 4.dp),
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(160.dp)) {
@@ -184,6 +196,9 @@ fun GameView(
                 Text(pick.consoleName(), fontSize = 15.sp, color = MaterialTheme.colorScheme.primary)
                 if (pick.next.isNotEmpty()) {
                     Text(pick.next, fontSize = 13.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
+                }
+                if (pick.timesPicked > 1) {
+                    Text("Picked ${pick.timesPicked} times", fontSize = 13.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
                 }
                 if (pick.stats.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
@@ -235,13 +250,16 @@ fun GameView(
                 Description(
                     pick.description,
                     statusLine(row, vm, revision, hasSources),
-                    Modifier.weight(1f),
+                    page,
                     next = raGame?.nextToBeat()?.let { "Next towards beating it: ${it.title}. ${it.description}".trim() },
                     supported = supportedText(row, ra),
                 )
             }
         }
-        Footer(start = { if (onPrevious != null || onNext != null) PadHint("L1/R1", "Previous/next") }) {
+        Footer(start = {
+            if (menu.isNotEmpty()) PadHint("Start", "Menu")
+            if (onPrevious != null || onNext != null) PadHint("L1/R1", "Previous/next")
+        }) {
             PadHint("X", "Play")
             PadHint("B", "Back")
             PadHint("A", "Select")
@@ -254,6 +272,7 @@ fun GameView(
 
     if (pickerOpen) row.game?.let { game -> EmulatorPicker(vm, game, pick.displayTitle, onDismiss = { pickerOpen = false }) }
     if (helpOpen) HelpDialog(help, onDismiss = { helpOpen = false })
+    if (menuOpen) GameMenuDialog(pick.displayTitle, menu, onDismiss = { menuOpen = false })
     if (markOpen) MarkDialog(pick.displayTitle, mark, onMark = { vm.setMark(pick.gameId, it); markOpen = false }, onDismiss = { markOpen = false })
     if (getEmulatorOpen) GetEmulatorDialog(vm, row, onOpenLink, onDismiss = { getEmulatorOpen = false })
     if (copiesOpen) {
@@ -292,7 +311,7 @@ private fun statusLine(row: PickRow, vm: ClubViewModel, @Suppress("UNUSED_PARAME
                 ChoiceScope.PLATFORM -> " (${vm.platformName(game)} default)"
                 null -> ""
             }
-            "${game.fileName}\n" + (player?.let { "Plays in ${it.name}$via" } ?: "No emulator installed") + noAchievements(row, vm)
+            "${game.fileName}\n" + (player?.let { "Plays in ${it.label}$via" } ?: "No emulator installed") + noAchievements(row, vm)
         }
         PickState.NO_EMULATOR -> "${row.game?.fileName.orEmpty()}\n${row.message.orEmpty()}" + noAchievements(row, vm)
         PickState.CHOOSE_COPY -> "${row.copies.size} copies match. Choose which to play; it's remembered."
@@ -399,17 +418,16 @@ private fun GameStatus(state: PickState) {
 }
 
 /**
- * The game's summary, then a second paragraph on its file and emulator. D-pad down from the
- * buttons focuses it when it's long, then up/down scroll it.
+ * The game's summary, then a second paragraph on its file and emulator. When the page is too
+ * long for the screen, D-pad down from the buttons focuses it, then up/down scroll the [page].
  */
 @Composable
-private fun Description(summary: String, details: String, modifier: Modifier, next: String? = null, supported: String? = null) {
-    val scroll = rememberScrollState()
+private fun Description(summary: String, details: String, page: ScrollState, next: String? = null, supported: String? = null) {
     val scope = rememberCoroutineScope()
     var focused by remember { mutableStateOf(false) }
-    val scrollable = scroll.maxValue > 0
+    val scrollable = page.maxValue > 0
     Box(
-        modifier
+        Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .border(2.dp, if (focused) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(8.dp))
@@ -417,17 +435,17 @@ private fun Description(summary: String, details: String, modifier: Modifier, ne
             .onPreviewKeyEvent { e ->
                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (e.nativeKeyEvent.keyCode) {
-                    KeyEvent.KEYCODE_DPAD_DOWN -> if (scroll.value < scroll.maxValue) {
-                        scope.launch { scroll.animateScrollBy(160f, tween(150)) }; true
-                    } else true // the bottom of the screen: nothing below to move to
-                    KeyEvent.KEYCODE_DPAD_UP -> if (scroll.value > 0) {
-                        scope.launch { scroll.animateScrollBy(-160f, tween(150)) }; true
+                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        if (page.value < page.maxValue) scope.launch { page.animateScrollBy(160f, tween(150)) }
+                        true // at the bottom there's nothing below to move to
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP -> if (page.value > 0) {
+                        scope.launch { page.animateScrollBy(-160f, tween(150)) }; true
                     } else false // at the top: let focus go back up to the buttons
                     else -> false
                 }
             }
             .then(if (scrollable) Modifier.focusable() else Modifier)
-            .verticalScroll(scroll)
             .padding(6.dp),
     ) {
         Column {
