@@ -133,8 +133,13 @@ fun ClubScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val usageContext = LocalContext.current
+    fun requestUsageAccess() {
+        runCatching { usageContext.startActivity(vm.usageAccessIntent()) }
+            .onFailure { showMessage("Couldn't open Usage Access settings.") }
+    }
     if (state.showSetup) {
-        SetupScreen(vm, state, onAddFolder, onRequestAllFiles, onOpenUrl, showMessage, modifier)
+        SetupScreen(vm, state, onAddFolder, onRequestAllFiles, ::requestUsageAccess, onOpenUrl, showMessage, modifier)
         return
     }
     var focusedIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -356,6 +361,15 @@ fun ClubScreen(
             onChooseAnother = { vm.dismissUnrecognized(); onChooseFile(choice.row) },
             onUseAnyway = { vm.useUnrecognizedAnyway(showMessage) },
             onDismiss = vm::dismissUnrecognized,
+        )
+    }
+    state.retroArchSwitch?.let { switch ->
+        RetroArchSwitchDialog(
+            switch,
+            onResume = { vm.resumeRetroArch()?.let(showMessage) },
+            onStartAnyway = { vm.switchRetroArchAnyway()?.let(showMessage) },
+            onUsageAccess = { vm.dismissRetroArchSwitch(); requestUsageAccess() },
+            onDismiss = vm::dismissRetroArchSwitch,
         )
     }
     if (state.cocoonTip) CocoonTipDialog(onDismiss = vm::dismissCocoonTip)
