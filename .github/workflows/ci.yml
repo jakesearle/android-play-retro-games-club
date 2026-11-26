@@ -1,4 +1,5 @@
-# Runs the unit tests and Android lint on every push and pull request.
+# Runs the unit tests and Android lint on every push and pull request, and builds a debug APK
+# to download from the run's page.
 name: CI
 
 on:
@@ -29,6 +30,28 @@ jobs:
 
       - name: Unit tests and lint
         run: ./gradlew test :app:lintDebug --console=plain
+
+      # With the release key in the repository's secrets, the debug APK is signed with it, so it
+      # installs over a release without wiping the app's data. Without them (forks' pull
+      # requests, or before the secrets are added) it's signed with a throwaway debug key.
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: .github/scripts/signing-key.sh
+
+      - name: Debug APK
+        run: ./gradlew :app:assembleDebug --console=plain
+
+      - name: Keep the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: prgc-launcher-debug-${{ github.sha }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Keep the reports
         if: always()

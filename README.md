@@ -151,8 +151,28 @@ past picks come from). `-PromFile=/path/to/image -PromConsole=41 -PromHashes=/pa
 hashes a real disc image (console ID from RetroAchievements; the list is a saved
 `dorequest.php?r=hashlibrary&c=41`) and says whether RetroAchievements recognises it.
 
-GitHub Actions runs the unit tests and lint on every push and pull request
-(`.github/workflows/ci.yml`); the reports are kept as a build artifact.
+GitHub Actions runs the unit tests and lint on every push and pull request, and
+builds a debug APK (`.github/workflows/ci.yml`); the APK (kept 30 days) and the
+reports are the run's artifacts.
+
+**Releases.** Bump `versionName` and `versionCode` in `app/build.gradle.kts`,
+commit, and push a matching tag (`git tag v0.3.0 && git push origin v0.3.0`).
+`.github/workflows/release.yml` checks the tag against `versionName`, builds the
+signed release APK and attaches it to a draft release; write the notes and
+publish it on GitHub.
+
+**Signing on GitHub.** Both workflows sign with the release key from four
+repository secrets (Settings › Secrets and variables › Actions):
+
+| Secret | Value |
+|---|---|
+| `KEYSTORE_BASE64` | `base64 -i release.jks` |
+| `KEYSTORE_PASSWORD` | `storePassword` from `keystore.properties` |
+| `KEY_ALIAS` | `keyAlias` |
+| `KEY_PASSWORD` | `keyPassword` |
+
+Without them, CI's debug APK is signed with a throwaway key (it won't install
+over a release), and the release workflow fails rather than publish one.
 
 ## Licence
 
