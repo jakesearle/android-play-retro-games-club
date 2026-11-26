@@ -735,7 +735,7 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         val options = PlayerChooser.options(catalogue, platform, game, installed::isInstalled)
         if (options.isNotEmpty()) return options.first().problem ?: "No usable emulator."
         val names = platform.players.filter { catalogue.playerAccepts(it, game.fileName) }
-            .map { it.name.substringBefore(" - ") }.distinct().take(4)
+            .map { it.label.substringBefore(" - ") }.distinct().take(4)
         return "No emulator for ${platform.name} is installed. Try: ${names.joinToString()}"
     }
 

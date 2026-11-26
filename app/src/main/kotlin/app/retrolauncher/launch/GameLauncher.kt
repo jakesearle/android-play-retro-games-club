@@ -27,7 +27,7 @@ class GameLauncher(private val context: Context) {
         )
         val spec = when (val result = command.resolve(gameFile)) {
             is ResolveResult.Success -> result.spec
-            is ResolveResult.Failure -> return "${player.name} can't launch this game: ${result.problems.joinToString()}"
+            is ResolveResult.Failure -> return "${player.label} can't launch this game: ${result.problems.joinToString()}"
         }
         val intent = spec.toIntent(grantWrite = true)
         Log.i(TAG, "Launching ${game.fileName} with ${player.id}: $intent extras=${intent.extras}")
@@ -35,10 +35,10 @@ class GameLauncher(private val context: Context) {
             context.startActivity(intent)
             null
         } catch (e: ActivityNotFoundException) {
-            "${player.name} isn't installed, or its launch activity has changed."
+            "${player.label} isn't installed, or its launch activity has changed."
         } catch (e: SecurityException) {
             Log.w(TAG, "Launch refused", e)
-            "${player.name} refused the launch: ${e.message}"
+            "${player.label} refused the launch: ${e.message}"
         }
     }
 

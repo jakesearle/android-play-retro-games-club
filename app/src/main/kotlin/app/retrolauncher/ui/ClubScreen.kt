@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -110,7 +111,7 @@ internal fun homeCards(rows: List<PickRow>): List<Card> {
         Card(type.label, row)
     }
     val specials = rows.filter { it !in used && it.pick.event != DEBUG_EVENT }
-        .map { Card(it.pick.event.ifEmpty { "Special" }, it) }
+        .map { Card(it.pick.eventLabel.ifEmpty { "Special" }, it) }
     val tests = rows.filter { it.pick.event == DEBUG_EVENT }.map { Card("Test pick", it) }
     return basic + specials + tests
 }
@@ -536,6 +537,8 @@ fun Header(
     title: String = "Play Retro Games Club",
     onSettings: (() -> Unit)? = null,
     onHelp: (() -> Unit)? = null,
+    /** The game view's ⋮ menu. */
+    onMenu: (() -> Unit)? = null,
     onPast: (() -> Unit)? = null,
     onFilter: (() -> Unit)? = null,
     filtering: Boolean = false,
@@ -552,6 +555,7 @@ fun Header(
             Text(status, fontSize = 14.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f), maxLines = 1, modifier = Modifier.padding(start = 16.dp))
         }
         if (onHelp != null) HelpButton(onHelp, Modifier.padding(start = 12.dp))
+        if (onMenu != null) MenuButton(onMenu, Modifier.padding(start = 12.dp))
         if (onStop != null) StopButton(onStop, Modifier.padding(start = 12.dp))
         if (onSurprise != null) SurpriseButton(onSurprise, Modifier.padding(start = 12.dp))
         if (onFilter != null) FilterButton(onFilter, filtering, Modifier.padding(start = 12.dp))
@@ -562,8 +566,38 @@ fun Header(
 
 /** A round, focusable button for the top bar. D-pad up from the screen below reaches it; A presses it. */
 @Composable
-private fun HeaderButton(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable (focused: Boolean) -> Unit) {
+private fun HeaderButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** Spelled out after the icon, making the button a pill. */
+    label: String? = null,
+    content: @Composable (focused: Boolean) -> Unit,
+) {
     var focused by remember { mutableStateOf(false) }
+    val colors = MaterialTheme.colorScheme
+    if (label != null) {
+        Row(
+            modifier
+                .height(44.dp)
+                .clip(RoundedCornerShape(50))
+                .background(if (focused) colors.primary else Color.Transparent)
+                .onFocusChanged { focused = it.isFocused }
+                .onPad { pad -> if (pad == Pad.A) { onClick(); true } else false }
+                .clickable(onClick = onClick)
+                .padding(start = 10.dp, end = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            content(focused)
+            Text(
+                label,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (focused) colors.onPrimary else colors.onBackground.copy(alpha = 0.8f),
+                modifier = Modifier.padding(start = 6.dp),
+            )
+        }
+        return
+    }
     Box(
         modifier
             .size(44.dp)
@@ -629,12 +663,23 @@ private fun FilterButton(onClick: () -> Unit, filtering: Boolean, modifier: Modi
     }
 }
 
-/** The home screen's past-picks button: a history clock, beside the cog. */
+/** The home screen's past-picks button: a history clock and "History", beside the cog. */
 @Composable
-private fun PastButton(onClick: () -> Unit, modifier: Modifier = Modifier) = HeaderButton(onClick, modifier) { focused ->
+private fun PastButton(onClick: () -> Unit, modifier: Modifier = Modifier) = HeaderButton(onClick, modifier, label = "History") { focused ->
     Icon(
         AppIcons.History,
-        contentDescription = "History",
+        contentDescription = null,
+        tint = if (focused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+        modifier = Modifier.size(28.dp),
+    )
+}
+
+/** The game view's menu button: three vertical dots. */
+@Composable
+private fun MenuButton(onClick: () -> Unit, modifier: Modifier = Modifier) = HeaderButton(onClick, modifier) { focused ->
+    Icon(
+        Icons.Filled.MoreVert,
+        contentDescription = "More",
         tint = if (focused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
         modifier = Modifier.size(28.dp),
     )

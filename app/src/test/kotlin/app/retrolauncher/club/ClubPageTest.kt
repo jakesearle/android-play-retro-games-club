@@ -1,5 +1,6 @@
 package app.retrolauncher.club
 
+import app.retrolauncher.ui.periodLabel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -360,6 +361,16 @@ class PastPicksParseTest {
         assertEquals("https://www.playretrogamesclub.com/img/5068.png", alien.imageUrl)
         assertEquals(RaConsoles.MEGA_DRIVE, past[1].console?.id)
         assertEquals("2026-09-27", ClubPage.periodStart(past[1].event.removePrefix("Game of the Week").trim()).toString())
+    }
+
+    @Test
+    fun `a repeat pick counts its picks and seasons show without their days`() {
+        val past = ClubPage.parsePast(ClubFixture.pastPage)
+        assertEquals(listOf(1, 1, 1, 2, 1), past.map { it.timesPicked })
+        assertEquals("Romhack of the Month March 2026", past[3].eventLabel)
+        assertEquals("Game of the Season Q3 2026", past[2].eventLabel)
+        assertEquals("March 2026 and 1 more", past[3].periodLabel)
+        assertEquals("Q3 2026", past[2].periodLabel)
     }
 
     @Test

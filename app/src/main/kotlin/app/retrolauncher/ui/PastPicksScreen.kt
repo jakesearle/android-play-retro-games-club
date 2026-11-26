@@ -140,7 +140,7 @@ fun PastPicksScreen(
             ) {
                 itemsIndexed(visible, key = { _, row -> row.key }) { index, row ->
                     PickCard(
-                        card = Card(row.pick.type?.label ?: row.pick.event, row, note = row.pick.period),
+                        card = Card(row.pick.type?.label ?: row.pick.event, row, note = row.pick.periodLabel),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(CARD_HEIGHT)
