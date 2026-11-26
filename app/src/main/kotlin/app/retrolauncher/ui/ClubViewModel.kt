@@ -69,6 +69,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.Duration
 import java.time.Instant
+import java.util.Locale
 
 /** NO_EMULATOR: the ROM was found, but no installed emulator can launch it. */
 /** NOT_CHECKED: the search was stopped before reaching this pick. */
@@ -131,6 +132,8 @@ data class ClubState(
     val update: AppUpdate? = null,
     /** How updating to [update] in the app is going. */
     val updateStep: UpdateStep = UpdateStep.Idle,
+    /** The Console name region setting; null follows the device's region. */
+    val consoleRegion: RaConsoles.Region? = null,
 )
 
 /** Updating the app from Settings: download, then (once allowed) Android's installer. */
@@ -197,6 +200,11 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     private val catalogueRepo = CatalogueRepository(File(app.cacheDir, "catalogue"))
     private val clubRepo = ClubRepository(File(app.filesDir, "club"))
     private val settings = Settings(app)
+
+    init {
+        applyConsoleRegion(settings.consoleRegion)
+    }
+
     private val scanner = LibraryScanner(app.contentResolver)
     private val romFiles = RomFiles(app.contentResolver)
     private val installed = InstalledPackages(app.packageManager)
@@ -250,6 +258,7 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
             showSetup = shouldShowSetup(settings.setupDone, settings.sources.isNotEmpty()),
             pastFilter = PastFilter.decode(settings.pastFilter),
             marks = loadMarks(),
+            consoleRegion = settings.consoleRegion,
             ra = RaState(user = raAccount?.user, progress = if (raAccount != null) raRepo.cachedProgress() else emptyMap()),
         )
     )
@@ -1029,6 +1038,24 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
         if (!hasAllFilesAccess()) return false
         val roots = listOf(Environment.getExternalStorageDirectory()) + (File("/storage").listFiles()?.toList().orEmpty())
         return roots.any { File(it, "Cocoon").isDirectory }
+    }
+
+    // ── Console names ───────────────────────────────────────────────────────
+
+    /** The region automatic console names follow: the device's country. */
+    fun deviceConsoleRegion(): RaConsoles.Region = RaConsoles.Region.ofCountry(Locale.getDefault().country)
+
+    /** Steps the Console name region setting on: Automatic, then each region in turn. */
+    fun cycleConsoleRegion() {
+        val options = listOf(null) + RaConsoles.Region.entries
+        val next = options[(options.indexOf(settings.consoleRegion) + 1) % options.size]
+        settings.consoleRegion = next
+        applyConsoleRegion(next)
+        _state.update { it.copy(consoleRegion = next) }
+    }
+
+    private fun applyConsoleRegion(chosen: RaConsoles.Region?) {
+        RaConsoles.region = chosen ?: deviceConsoleRegion()
     }
 
     fun dismissCocoonTip() {

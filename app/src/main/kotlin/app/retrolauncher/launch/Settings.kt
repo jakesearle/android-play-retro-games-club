@@ -2,6 +2,7 @@ package app.retrolauncher.launch
 
 import android.content.Context
 import androidx.core.content.edit
+import app.retrolauncher.club.RaConsoles
 import app.retrolauncher.library.Game
 import app.retrolauncher.library.RomSource
 
@@ -44,6 +45,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(COCOON_TIP, false)
         set(value) = prefs.edit { putBoolean(COCOON_TIP, value) }
 
+    /** Whose names consoles go by ("Genesis" or "Mega Drive"). Null follows the device's region. */
+    var consoleRegion: RaConsoles.Region?
+        get() = prefs.getString(CONSOLE_REGION, null)?.let { name -> RaConsoles.Region.entries.firstOrNull { it.name == name } }
+        set(value) = prefs.edit { if (value == null) remove(CONSOLE_REGION) else putString(CONSOLE_REGION, value.name) }
+
     /** Your marks on games, by RA game ID: the mark's name ("DNF", "COMPLETED_ELSEWHERE"). */
     fun marks(): Map<Int, String> = prefs.all.mapNotNull { (k, v) ->
         if (!k.startsWith(MARK)) return@mapNotNull null
@@ -66,5 +72,6 @@ class Settings(context: Context) {
         const val PAST_FILTER = "past_filter"
         const val MARK = "mark/"
         const val COCOON_TIP = "cocoon_tip_shown"
+        const val CONSOLE_REGION = "console_region"
     }
 }
