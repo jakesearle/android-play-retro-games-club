@@ -47,7 +47,8 @@ sealed interface ClubResult {
     /**
      * @param fromCache the site couldn't be reached and this is the saved page.
      * @param fetchedAt when the site last confirmed the page.
-     * @param past the club's earlier picks, from the page's Past Winners ([ClubPage.parsePast]).
+     * @param past the club's earlier picks, from its games page ([ClubPage.parsePast]); empty if
+     *   that page couldn't be loaded and none was saved.
      */
     data class Ok(
         val picks: List<ClubPick>,
@@ -65,6 +66,9 @@ sealed interface ClubResult {
  * hours old and before the club's next announced change), otherwise from the site, sending the
  * saved page's ETag so an unchanged page costs a tiny "not modified". Falls back to the saved
  * page when offline. Only pages that parse are saved.
+ *
+ * The earlier picks are on a second page ([ClubPage.PAST_URL]), fetched whenever the club page
+ * is and saved beside it the same way. It can't fail a load: without it there are no past picks.
  */
 class ClubRepository(
     private val dir: File,
@@ -73,19 +77,21 @@ class ClubRepository(
 ) {
     private val htmlFile get() = File(dir, "club.html")
     private val metaFile get() = File(dir, "club.meta")
+    private val pastHtmlFile get() = File(dir, "games.html")
+    private val pastMetaFile get() = File(dir, "games.meta")
 
     private data class Meta(val fetched: Instant, val etag: String?)
 
     /** Blocking; call from a background thread. [force] always asks the site (Refresh). */
     fun load(force: Boolean = false): ClubResult {
         val now = clock()
-        val meta = readMeta()
+        val meta = readMeta(metaFile)
         val saved = readSaved()
 
         if (!force && meta != null && saved != null && saved.second.isNotEmpty()) {
             val (html, picks) = saved
             if (ClubPage.cacheIsFresh(now, meta.fetched, ClubPage.nextChange(html, meta.fetched))) {
-                return ClubResult.Ok(picks, fromCache = false, fetchedAt = meta.fetched, past = ClubPage.parsePast(html))
+                return ClubResult.Ok(picks, fromCache = false, fetchedAt = meta.fetched, past = savedPast())
             }
         }
 
@@ -94,8 +100,8 @@ class ClubRepository(
             var response = http.get(ClubPage.URL, if (canRevalidate) meta?.etag else null)
             if (response.notModified) {
                 if (canRevalidate) {
-                    writeMeta(Meta(now, response.etag ?: meta?.etag))
-                    return ClubResult.Ok(saved!!.second, fromCache = false, fetchedAt = now, past = ClubPage.parsePast(saved.first))
+                    writeMeta(metaFile, Meta(now, response.etag ?: meta?.etag))
+                    return ClubResult.Ok(saved!!.second, fromCache = false, fetchedAt = now, past = fetchPast(now))
                 }
                 response = http.get(ClubPage.URL, null)
             }
@@ -105,8 +111,8 @@ class ClubRepository(
             } else {
                 dir.mkdirs()
                 atomicWrite(htmlFile, response.body)
-                writeMeta(Meta(now, response.etag))
-                ClubResult.Ok(picks, fromCache = false, fetchedAt = now, past = ClubPage.parsePast(response.body))
+                writeMeta(metaFile, Meta(now, response.etag))
+                ClubResult.Ok(picks, fromCache = false, fetchedAt = now, past = fetchPast(now))
             }
         } catch (e: IOException) {
             if (saved != null && saved.second.isNotEmpty()) {
@@ -114,12 +120,42 @@ class ClubRepository(
                     saved.second,
                     fromCache = true,
                     fetchedAt = meta?.fetched ?: Instant.ofEpochMilli(htmlFile.lastModified()),
-                    past = ClubPage.parsePast(saved.first),
+                    past = savedPast(),
                 )
             } else {
                 ClubResult.NetworkError(e)
             }
         }
+    }
+
+    /** The games page from the site (revalidated with its ETag), else the saved one. */
+    private fun fetchPast(now: Instant): List<ClubPick> {
+        val saved = savedPast()
+        return try {
+            val etag = readMeta(pastMetaFile)?.etag?.takeIf { saved.isNotEmpty() }
+            var response = http.get(ClubPage.PAST_URL, etag)
+            if (response.notModified) {
+                if (saved.isNotEmpty()) {
+                    writeMeta(pastMetaFile, Meta(now, response.etag ?: etag))
+                    return saved
+                }
+                response = http.get(ClubPage.PAST_URL, null)
+            }
+            val past = ClubPage.parsePast(response.body)
+            if (past.isEmpty()) return saved
+            dir.mkdirs()
+            atomicWrite(pastHtmlFile, response.body)
+            writeMeta(pastMetaFile, Meta(now, response.etag))
+            past
+        } catch (_: IOException) {
+            saved
+        }
+    }
+
+    private fun savedPast(): List<ClubPick> = try {
+        pastHtmlFile.takeIf { it.exists() }?.readText()?.let(ClubPage::parsePast).orEmpty()
+    } catch (_: Exception) {
+        emptyList()
     }
 
     private fun readSaved(): Pair<String, List<ClubPick>>? = try {
@@ -128,17 +164,17 @@ class ClubRepository(
         null
     }
 
-    private fun readMeta(): Meta? = try {
-        val lines = metaFile.readLines().associate { it.substringBefore(' ') to it.substringAfter(' ', "") }
+    private fun readMeta(file: File): Meta? = try {
+        val lines = file.readLines().associate { it.substringBefore(' ') to it.substringAfter(' ', "") }
         val fetched = lines["fetched"]?.toLongOrNull() ?: return null
         Meta(Instant.ofEpochMilli(fetched), lines["etag"]?.takeIf { it.isNotEmpty() })
     } catch (_: Exception) {
         null
     }
 
-    private fun writeMeta(meta: Meta) {
+    private fun writeMeta(file: File, meta: Meta) {
         dir.mkdirs()
-        atomicWrite(metaFile, "fetched ${meta.fetched.toEpochMilli()}\netag ${meta.etag.orEmpty()}\n")
+        atomicWrite(file, "fetched ${meta.fetched.toEpochMilli()}\netag ${meta.etag.orEmpty()}\n")
     }
 
     private fun atomicWrite(target: File, text: String) {

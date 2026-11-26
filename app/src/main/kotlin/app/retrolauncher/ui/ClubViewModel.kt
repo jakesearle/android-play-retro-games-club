@@ -378,8 +378,8 @@ class ClubViewModel(app: Application) : AndroidViewModel(app) {
     // ── Past picks ───────────────────────────────────────────────────────────
 
     /**
-     * Sets the club's earlier picks, leaving out the current ones (each Past Winners tab starts
-     * with the current pick of its type). Rows already checked keep their status.
+     * Sets the club's earlier picks, leaving out the current ones (in case the games page lists a
+     * pick while it is still running). Rows already checked keep their status.
      */
     private fun setPast(all: List<ClubPick>, current: List<ClubPick> = clubPicks) {
         val earlier = all.filterNot { p ->

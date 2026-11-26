@@ -64,20 +64,12 @@ object ClubPage {
             .take(MAX_PICKS)
     }
 
-    /** The Past Winners tabs, by the id in their CSS class, with the pick type each holds. */
-    private val PAST_TABS = linkedMapOf(
-        "gotw" to "Game of the Week",
-        "gotm" to "Game of the Month",
-        "rhotm" to "Romhack of the Month",
-        "gots" to "Game of the Season",
-    )
+    /** Where the club lists its earlier picks, since it moved them off [URL] (November 2026). */
+    const val PAST_URL = "https://www.playretrogamesclub.com/games/"
 
-    /**
-     * The club's earlier picks, from the page's Past Winners tabs (`jrh-picks-tabs__panel--gotw`
-     * and so on, rows `jrh-winners-row`): every row is on the page, the site pages them in the
-     * browser. Grouped by type, newest first, as the site lists them; each tab starts with the
-     * current pick. Rows have no description or guide, and one stat: how many members beat it.
-     */
+    /** The pick types the past list keeps, by their tag's text. Specials have no past-picks filter. */
+    private val PAST_TYPES = listOf("Game of the Week", "Game of the Month", "Romhack of the Month", "Game of the Season")
+
     /**
      * The first day of a pick's period, for sorting: "November 8 - 14, 2026" (a week, which may
      * run into the next month or year), "November 2026" (a month) or "Q4 2026 (Oct 1 - Dec 31)"
@@ -110,33 +102,72 @@ object ClubPage {
     private val WEEK = Regex("""^([A-Za-z]+)\s+(\d{1,2})\s*-\s*(?:([A-Za-z]+)\s+)?(\d{1,2}),\s*(\d{4})""")
     private val MONTH = Regex("""^([A-Za-z]+)\s+(\d{4})$""")
 
+    /**
+     * The club's earlier picks, from the Past games list on [PAST_URL] (`#game-list`, one `li` per
+     * game, newest first): every row is on the page, the site pages them in the browser. Rows
+     * have no description or guide, and two stats: how many members beat it, and its rating.
+     *
+     * The list has no RetroAchievements links; the box art is named by the RA game ID
+     * (`/img/5068.png`), so that is where the ID comes from. The console is the row's `data-sys`,
+     * written after the title as the current picks do ("Alien Hominid (GBA)"). Periods are
+     * rewritten into the current picks' wording ([pastPeriod]). A game picked more than once
+     * ("March 2026 and 1 more") is one row, for its latest pick.
+     */
     fun parsePast(html: String): List<ClubPick> {
-        val doc = Jsoup.parse(html, URL)
-        return PAST_TABS.flatMap { (id, type) ->
-            val panel = doc.selectFirst(".jrh-picks-tabs__panel--$id") ?: return@flatMap emptyList()
-            panel.select(".jrh-winners-row").mapNotNull { row ->
-                val link = row.selectFirst(".jrh-winners-row__title a") ?: return@mapNotNull null
-                val title = link.text().trim().ifEmpty { return@mapNotNull null }
-                // "November 8 - 14, 2026 · 43 beaten"
-                val periodLine = row.selectFirst(".jrh-winners-row__period")?.let(::visibleText).orEmpty()
-                val period = periodLine.substringBefore('·').trim()
-                val beaten = Regex("""(\d+)\s+beaten""").find(periodLine)?.groupValues?.get(1)
-                    // Before the club counted, the page says "0 beaten"; that's no data, not nobody.
-                    ?.takeUnless { it == "0" && periodStart(period)?.isBefore(BEATEN_COUNTED_FROM) == true }
-                val style = row.selectFirst(".jrh-winners-row__thumb")?.attr("style").orEmpty()
-                ClubPick(
-                    event = if (period.isEmpty()) type else "$type $period",
-                    next = "",
-                    title = title,
-                    description = "",
-                    imageUrl = IMAGE_URL.find(style)?.groupValues?.get(1).orEmpty(),
-                    raUrl = link.absUrl("href"),
-                    guideUrl = "",
-                    stats = listOfNotNull(beaten?.let { ClubStat("Beaten", it) }),
-                )
-            }
+        val doc = Jsoup.parse(html, PAST_URL)
+        return doc.select("#game-list > li").mapNotNull { row ->
+            val pick = row.selectFirst(".g-pick") ?: return@mapNotNull null
+            val type = pick.selectFirst(".tag")?.text()?.trim()?.takeIf { it in PAST_TYPES } ?: return@mapNotNull null
+            val name = row.selectFirst(".g-main strong")?.text()?.trim().orEmpty().ifEmpty { return@mapNotNull null }
+            val sys = row.attr("data-sys").trim()
+            val period = pastPeriod(pick.selectFirst(".g-sub")?.text().orEmpty())
+            val image = row.selectFirst(".g-art img")?.absUrl("src").orEmpty()
+            val gameId = RA_IMAGE_ID.find(image)?.groupValues?.get(1) ?: return@mapNotNull null
+            val beaten = row.attr("data-s-beaten").trim().takeIf { it.isNotEmpty() }
+                // Before the club counted, the page says 0 beaten; that's no data, not nobody.
+                ?.takeUnless { it == "0" && periodStart(period)?.isBefore(BEATEN_COUNTED_FROM) == true }
+            val rating = row.attr("data-s-rating").trim().takeIf { it.isNotEmpty() }
+            ClubPick(
+                event = if (period.isEmpty()) type else "$type $period",
+                next = "",
+                title = if (sys.isEmpty()) name else "$name ($sys)",
+                description = "",
+                imageUrl = image,
+                raUrl = "https://retroachievements.org/game/$gameId",
+                guideUrl = "",
+                stats = listOfNotNull(rating?.let { ClubStat("Rating", "$it/10") }, beaten?.let { ClubStat("Beaten", it) }),
+            )
         }
     }
+
+    private val RA_IMAGE_ID = Regex("""/img/(\d+)\.[A-Za-z]+$""")
+
+    /**
+     * A past game's period in the current picks' wording, so it reads, sorts and ends the same:
+     * "Nov 15 to 21, 2026" → "November 15 - 21, 2026", "Sep 27 to Oct 3, 2026" →
+     * "September 27 - October 3, 2026", "October to December 2026" → "Q4 2026 (Oct 1 - Dec 31)".
+     * Months ("July 2024") are already the same. A trailing "and 1 more" is dropped.
+     */
+    internal fun pastPeriod(text: String): String {
+        val p = text.trim().replace(Regex("""\s+and\s+\d+\s+more$"""), "")
+        fun month(abbr: String) = MONTHS.firstOrNull { it.startsWith(abbr.take(3), ignoreCase = true) }
+        PAST_WEEK.find(p)?.let { m ->
+            val (startMonth, startDay, endMonth, endDay, year) = m.destructured
+            val start = month(startMonth) ?: return p
+            val end = if (endMonth.isEmpty()) "" else (month(endMonth) ?: return p) + " "
+            return "$start $startDay - $end$endDay, $year"
+        }
+        PAST_SEASON.find(p)?.let { m ->
+            val (first, year) = m.destructured
+            val q = listOf("January", "April", "July", "October").indexOfFirst { it.equals(first, ignoreCase = true) }
+            return "Q${q + 1} $year (${QUARTER_DAYS[q]})"
+        }
+        return p
+    }
+
+    private val PAST_WEEK = Regex("""^([A-Za-z]+)\s+(\d{1,2})\s+to\s+(?:([A-Za-z]+)\s+)?(\d{1,2}),\s*(\d{4})$""")
+    private val PAST_SEASON = Regex("""^(January|April|July|October)\s+to\s+(?:March|June|September|December)\s+(\d{4})$""", RegexOption.IGNORE_CASE)
+    private val QUARTER_DAYS = listOf("Jan 1 - Mar 31", "Apr 1 - Jun 30", "Jul 1 - Sep 30", "Oct 1 - Dec 31")
 
     /**
      * The club started counting who beat each pick around here: the first week with a count is
@@ -144,8 +175,6 @@ object ClubPage {
      * started earlier show no Beaten stat rather than a misleading 0.
      */
     val BEATEN_COUNTED_FROM: LocalDate = LocalDate.of(2026, 6, 28)
-
-    private val IMAGE_URL = Regex("""url\(\s*['"]?([^'")]+)['"]?\s*\)""")
 
     private fun parseCard(card: Element): ClubPick {
         fun text(selector: String) = card.selectFirst(selector)?.let(::visibleText).orEmpty()
@@ -205,7 +234,9 @@ object ClubPage {
         "January", "February", "March", "April", "May", "June", "July",
         "August", "September", "October", "November", "December",
     )
-    private val DAY_IN_TEXT = Regex("""(${MONTHS.joinToString("|")}) (\d{1,2}), (\d{4})""")
+    private val DAY_IN_TEXT = MONTHS.joinToString("|").let { months ->
+        Regex("""($months) (\d{1,2})(?:\s*[-–]\s*(?:($months) )?\d{1,2})?, (\d{4})""")
+    }
 
     /**
      * When the page next changes, as it announces: the earliest of the countdown's
@@ -232,11 +263,18 @@ object ClubPage {
         return candidates.filter { it.isAfter(fetched) }.minOrNull()
     }
 
-    /** The first "<Month> <day>, <year>" in [text], as midnight UTC (the club's countdown runs on UTC). */
+    /**
+     * The first "<Month> <day>, <year>" in [text], as midnight UTC (the club's countdown runs on
+     * UTC). For a range ("New week starts November 29 - December 5, 2026") it's the range's
+     * start, a year earlier when the range crosses New Year ("December 27 - January 2, 2027").
+     */
     internal fun dayInText(text: String): Instant? {
         val m = DAY_IN_TEXT.find(text) ?: return null
+        val (startMonth, day, endMonth, yearText) = m.destructured
+        val month = MONTHS.indexOf(startMonth) + 1
+        val crossesYear = endMonth.isNotEmpty() && MONTHS.indexOf(endMonth) + 1 < month
         return try {
-            LocalDate.of(m.groupValues[3].toInt(), MONTHS.indexOf(m.groupValues[1]) + 1, m.groupValues[2].toInt())
+            LocalDate.of(yearText.toInt() - if (crossesYear) 1 else 0, month, day.toInt())
                 .atStartOfDay().toInstant(ZoneOffset.UTC)
         } catch (_: java.time.DateTimeException) {
             null
