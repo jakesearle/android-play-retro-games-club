@@ -203,7 +203,7 @@ class ClubFinderTest {
         assertEquals(setOf("WBFS"), result.formats)
         assertEquals(1, result.count)
         // Chosen by hand, it's accepted without a check, as before GameCube matching existed.
-        val console = RaConsoles.Console(RaConsoles.GAMECUBE, "GC", "GameCube")
+        val console = RaConsoles.Console(RaConsoles.GAMECUBE, "GC")
         val library = HashLibrary(File(tmp.root, "hashlib2"), download = { """{"Success":true,"MD5List":{"abc":1}}""" })
         assertEquals(ClubFinder.Verdict.NotCheckable, ClubFinder.verifyChosen(library, console, 1, Rom("Wind Waker.wbfs", otherRom)))
     }
@@ -244,7 +244,7 @@ class VerifyChosenTest {
     val tmp = TemporaryFolder()
 
     private val gameRom = Random(9).nextBytes(32 * 1024)
-    private val gba = RaConsoles.Console(RaConsoles.GAMEBOY_ADVANCE, "GBA", "Game Boy Advance")
+    private val gba = RaConsoles.Console(RaConsoles.GAMEBOY_ADVANCE, "GBA")
 
     private fun library(online: Boolean) = HashLibrary(tmp.newFolder(), download = {
         if (!online) throw java.io.IOException("offline")
@@ -259,7 +259,7 @@ class VerifyChosenTest {
         // Offline with no saved list: can't check, so it's not accepted.
         assertEquals(ClubFinder.Verdict.NoHashList, ClubFinder.verifyChosen(library(online = false), gba, 5068, Rom("x.gba", gameRom)))
         // Disc consoles that can't be hashed yet are trusted.
-        val threeDo = RaConsoles.Console(RaConsoles.THREEDO, "3DO", "3DO")
+        val threeDo = RaConsoles.Console(RaConsoles.THREEDO, "3DO")
         assertEquals(ClubFinder.Verdict.NotCheckable, ClubFinder.verifyChosen(library(online = false), threeDo, 1, Rom("x.cue", gameRom)))
         val broken = object : RomFile {
             override val name = "z.gba"; override val parentName = null

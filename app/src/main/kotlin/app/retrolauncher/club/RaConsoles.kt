@@ -1,11 +1,40 @@
 package app.retrolauncher.club
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+
 /**
  * RetroAchievements console IDs (rcheevos `rc_consoles.h`) and the labels the club page puts
  * after a title, "Paper Mario (N64)". Ported from the NextUI Pak's `src/roms.c`.
  */
 object RaConsoles {
-    data class Console(val id: Int, val label: String, val name: String)
+    /** A console a title's label names. [name] is the console's name in the current [region]. */
+    data class Console(val id: Int, val label: String) {
+        val name: String get() = name(id) ?: label
+    }
+
+    /** Where a console's name comes from: some consoles were sold under different names. */
+    enum class Region(val title: String) {
+        NORTH_AMERICA("North America"),
+        EUROPE("Europe"),
+        JAPAN("Japan");
+
+        companion object {
+            /** The region for a device country code ("US", "CA", "GB"). Anywhere else uses Europe's names. */
+            fun ofCountry(country: String): Region = when (country.uppercase()) {
+                "US", "CA", "MX", "PR" -> NORTH_AMERICA
+                "JP" -> JAPAN
+                else -> EUROPE
+            }
+        }
+    }
+
+    /**
+     * The region whose names [name] gives. Compose snapshot state, so a screen showing a
+     * console name redraws when the setting changes.
+     */
+    var region: Region by mutableStateOf(Region.NORTH_AMERICA)
 
     const val MEGA_DRIVE = 1
     const val NINTENDO_64 = 2
@@ -80,45 +109,55 @@ object RaConsoles {
     const val UZEBOX = 80
     const val FAMICOM_DISK_SYSTEM = 81
 
-    /** Labels collected from the club's history, with the name used in messages. */
-    private val LABELS = listOf(
-        Console(ARCADE, "Arcade", "Arcade"),
-        Console(NINTENDO, "NES", "NES"),
-        Console(FAMICOM_DISK_SYSTEM, "FDS", "Famicom Disk System"),
-        Console(SUPER_NINTENDO, "SNES", "SNES"),
-        Console(NINTENDO_64, "N64", "Nintendo 64"),
-        Console(GAMECUBE, "GC", "GameCube"),
-        Console(WII, "Wii", "Wii"),
-        Console(GAMEBOY, "GB", "Game Boy"),
-        Console(GAMEBOY_COLOR, "GBC", "Game Boy Color"),
-        Console(GAMEBOY_ADVANCE, "GBA", "Game Boy Advance"),
-        Console(NINTENDO_DS, "NDS", "Nintendo DS"),
-        Console(VIRTUAL_BOY, "VB", "Virtual Boy"),
-        Console(MEGA_DRIVE, "MD", "Genesis"),
-        Console(MEGA_DRIVE, "Genesis", "Genesis"),
-        Console(MASTER_SYSTEM, "SMS", "Master System"),
-        Console(GAME_GEAR, "GG", "Game Gear"),
-        Console(SEGA_CD, "SCD", "Sega CD"),
-        Console(SEGA_32X, "32X", "32X"),
-        Console(SATURN, "Saturn", "Saturn"),
-        Console(DREAMCAST, "DC", "Dreamcast"),
-        Console(PLAYSTATION, "PS1", "PlayStation"),
-        Console(PLAYSTATION, "PSX", "PlayStation"),
-        Console(PLAYSTATION_2, "PS2", "PlayStation 2"),
-        Console(PSP, "PSP", "PSP"),
-        Console(PC_ENGINE, "PCE", "PC Engine"),
-        Console(PC_ENGINE, "TG16", "TurboGrafx-16"),
-        Console(NEOGEO_POCKET, "NGP", "Neo Geo Pocket"),
-        Console(NEOGEO_POCKET, "NGPC", "Neo Geo Pocket Color"),
-        Console(ATARI_LYNX, "Lynx", "Lynx"),
-        Console(ATARI_2600, "2600", "Atari 2600"),
-        Console(ATARI_7800, "7800", "Atari 7800"),
+    /** Labels collected from the club's history. */
+    private val LABELS = mapOf(
+        "Arcade" to ARCADE, "NES" to NINTENDO, "FDS" to FAMICOM_DISK_SYSTEM, "SNES" to SUPER_NINTENDO,
+        "N64" to NINTENDO_64, "GC" to GAMECUBE, "Wii" to WII, "GB" to GAMEBOY, "GBC" to GAMEBOY_COLOR,
+        "GBA" to GAMEBOY_ADVANCE, "NDS" to NINTENDO_DS, "VB" to VIRTUAL_BOY, "MD" to MEGA_DRIVE,
+        "Genesis" to MEGA_DRIVE, "SMS" to MASTER_SYSTEM, "GG" to GAME_GEAR, "SCD" to SEGA_CD,
+        "32X" to SEGA_32X, "Saturn" to SATURN, "DC" to DREAMCAST, "PS1" to PLAYSTATION, "PSX" to PLAYSTATION,
+        "PS2" to PLAYSTATION_2, "PSP" to PSP, "PCE" to PC_ENGINE, "TG16" to PC_ENGINE,
+        "NGP" to NEOGEO_POCKET, "NGPC" to NEOGEO_POCKET, "Lynx" to ATARI_LYNX, "2600" to ATARI_2600,
+        "7800" to ATARI_7800,
+    )
+
+    /** The name used in messages, where every region uses the same one. */
+    private val NAMES = mapOf(
+        ARCADE to "Arcade", NINTENDO to "NES", FAMICOM_DISK_SYSTEM to "Famicom Disk System",
+        SUPER_NINTENDO to "SNES", NINTENDO_64 to "Nintendo 64", GAMECUBE to "GameCube", WII to "Wii",
+        GAMEBOY to "Game Boy", GAMEBOY_COLOR to "Game Boy Color", GAMEBOY_ADVANCE to "Game Boy Advance",
+        NINTENDO_DS to "Nintendo DS", VIRTUAL_BOY to "Virtual Boy", MASTER_SYSTEM to "Master System",
+        GAME_GEAR to "Game Gear", SEGA_32X to "32X", SATURN to "Saturn", DREAMCAST to "Dreamcast",
+        PLAYSTATION to "PlayStation", PLAYSTATION_2 to "PlayStation 2", PSP to "PSP",
+        NEOGEO_POCKET to "Neo Geo Pocket", ATARI_LYNX to "Lynx", ATARI_2600 to "Atari 2600",
+        ATARI_7800 to "Atari 7800",
+    )
+
+    /**
+     * Consoles sold under different names. Canada had the US names. Europe never had an
+     * official TurboGrafx launch, so it knows the imported PC Engine.
+     */
+    private val REGIONAL_NAMES = mapOf(
+        Region.NORTH_AMERICA to mapOf(
+            MEGA_DRIVE to "Genesis", SEGA_CD to "Sega CD",
+            PC_ENGINE to "TurboGrafx-16", PC_ENGINE_CD to "TurboGrafx-CD",
+        ),
+        Region.EUROPE to mapOf(
+            MEGA_DRIVE to "Mega Drive", SEGA_CD to "Mega-CD",
+            PC_ENGINE to "PC Engine", PC_ENGINE_CD to "PC Engine CD",
+        ),
+        Region.JAPAN to mapOf(
+            MEGA_DRIVE to "Mega Drive", SEGA_CD to "Mega-CD",
+            PC_ENGINE to "PC Engine", PC_ENGINE_CD to "PC Engine CD-ROM²",
+            NINTENDO to "Famicom", SUPER_NINTENDO to "Super Famicom",
+        ),
     )
 
     /** Other short forms a title might use. */
     private val ALIASES = mapOf(
         "FC" to NINTENDO, "Famicom" to NINTENDO, "SFC" to SUPER_NINTENDO, "Super Famicom" to SUPER_NINTENDO,
-        "Mega Drive" to MEGA_DRIVE, "GEN" to MEGA_DRIVE, "Sega CD" to SEGA_CD, "Mega CD" to SEGA_CD,
+        "Mega Drive" to MEGA_DRIVE, "GEN" to MEGA_DRIVE, "Sega CD" to SEGA_CD, "Mega CD" to SEGA_CD, "Mega-CD" to SEGA_CD,
+        "PC Engine" to PC_ENGINE, "TurboGrafx-16" to PC_ENGINE, "TurboGrafx" to PC_ENGINE,
         "SAT" to SATURN, "PS" to PLAYSTATION, "PCECD" to PC_ENGINE_CD, "PCE-CD" to PC_ENGINE_CD,
         "TGCD" to PC_ENGINE_CD, "TG-16" to PC_ENGINE, "PCFX" to PCFX, "SG1000" to SG1000,
         "Wii U" to WII_U, "WiiU" to WII_U, "3DS" to NINTENDO_3DS, "DSi" to NINTENDO_DSI,
@@ -140,9 +179,9 @@ object RaConsoles {
     /** The console a title's trailing label names, or null. */
     fun fromTitle(title: String): Console? {
         val label = TRAILING_LABEL.find(title)?.groupValues?.get(1)?.trim() ?: return null
-        LABELS.firstOrNull { it.label.equals(label, ignoreCase = true) }?.let { return it }
-        val id = ALIASES.entries.firstOrNull { it.key.equals(label, ignoreCase = true) }?.value ?: return null
-        return Console(id, label, name(id) ?: label)
+        val match = (LABELS.entries + ALIASES.entries).firstOrNull { it.key.equals(label, ignoreCase = true) }
+            ?: return null
+        return Console(match.value, match.key)
     }
 
     /** The trailing label, even when it names no known console ("Paper Mario (N64)" → "N64"). */
@@ -150,7 +189,7 @@ object RaConsoles {
 
     fun titleWithoutLabel(title: String): String = title.replace(TRAILING_LABEL, "").ifEmpty { title }
 
-    fun name(id: Int): String? = LABELS.firstOrNull { it.id == id }?.name
+    fun name(id: Int, region: Region = this.region): String? = REGIONAL_NAMES[region]?.get(id) ?: NAMES[id]
 
     /** The game ID in a `retroachievements.org/game/<id>` link, or 0. */
     fun gameIdFromUrl(url: String): Int =

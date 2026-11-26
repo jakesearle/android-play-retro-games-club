@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import app.retrolauncher.club.RaConsoles
 import app.retrolauncher.launch.Recommendation
 import app.retrolauncher.library.Game
 import kotlinx.coroutines.delay
@@ -232,6 +233,18 @@ fun MenuDialog(
                             ra.keyRefused -> "Signed in as ${ra.user}, but the key was refused. Sign in again."
                             else -> "Signed in as ${ra.user}."
                         },
+                    )
+                }
+            }
+            item {
+                FocusRow(onClick = vm::cycleConsoleRegion) { f ->
+                    val region = state.consoleRegion
+                    val shown = region ?: vm.deviceConsoleRegion()
+                    RowText(
+                        "Console name region: " + (region?.title ?: "Automatic (${shown.title})"),
+                        f,
+                        "Press A to change. Shows " + RaConsoles.name(RaConsoles.MEGA_DRIVE, shown) + " and " +
+                            RaConsoles.name(RaConsoles.PC_ENGINE, shown) + ".",
                     )
                 }
             }
