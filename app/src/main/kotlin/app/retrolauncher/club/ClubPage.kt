@@ -234,7 +234,9 @@ object ClubPage {
         "January", "February", "March", "April", "May", "June", "July",
         "August", "September", "October", "November", "December",
     )
-    private val DAY_IN_TEXT = Regex("""(${MONTHS.joinToString("|")}) (\d{1,2}), (\d{4})""")
+    private val DAY_IN_TEXT = MONTHS.joinToString("|").let { months ->
+        Regex("""($months) (\d{1,2})(?:\s*[-–]\s*(?:($months) )?\d{1,2})?, (\d{4})""")
+    }
 
     /**
      * When the page next changes, as it announces: the earliest of the countdown's
@@ -261,11 +263,18 @@ object ClubPage {
         return candidates.filter { it.isAfter(fetched) }.minOrNull()
     }
 
-    /** The first "<Month> <day>, <year>" in [text], as midnight UTC (the club's countdown runs on UTC). */
+    /**
+     * The first "<Month> <day>, <year>" in [text], as midnight UTC (the club's countdown runs on
+     * UTC). For a range ("New week starts November 29 - December 5, 2026") it's the range's
+     * start, a year earlier when the range crosses New Year ("December 27 - January 2, 2027").
+     */
     internal fun dayInText(text: String): Instant? {
         val m = DAY_IN_TEXT.find(text) ?: return null
+        val (startMonth, day, endMonth, yearText) = m.destructured
+        val month = MONTHS.indexOf(startMonth) + 1
+        val crossesYear = endMonth.isNotEmpty() && MONTHS.indexOf(endMonth) + 1 < month
         return try {
-            LocalDate.of(m.groupValues[3].toInt(), MONTHS.indexOf(m.groupValues[1]) + 1, m.groupValues[2].toInt())
+            LocalDate.of(yearText.toInt() - if (crossesYear) 1 else 0, month, day.toInt())
                 .atStartOfDay().toInstant(ZoneOffset.UTC)
         } catch (_: java.time.DateTimeException) {
             null

@@ -122,6 +122,10 @@ class ClubPageTest {
         assertEquals(Instant.parse("2026-12-01T00:00:00Z"), ClubPage.nextChange(ClubFixture.page, Instant.parse("2026-11-23T00:00:00Z")))
         assertEquals(Instant.parse("2026-11-28T00:00:00Z"), ClubPage.dayInText("Next month's voting starts November 28, 2026"))
         assertNull(ClubPage.dayInText("Q4 2026"))
+        // A range's start, not its end
+        assertEquals(Instant.parse("2026-11-29T00:00:00Z"), ClubPage.dayInText("New week starts November 29 - December 5, 2026"))
+        assertEquals(Instant.parse("2026-12-06T00:00:00Z"), ClubPage.dayInText("New week starts December 6 - 12, 2026"))
+        assertEquals(Instant.parse("2026-12-27T00:00:00Z"), ClubPage.dayInText("New week starts December 27 - January 2, 2027"))
     }
 
     @Test
@@ -518,6 +522,7 @@ class TimeLeftTest {
     @Test
     fun `a pick ends at its next line's date, else its period's end`() {
         assertEquals(utc("2026-11-22T00:00:00Z"), ClubPage.endsAt(pick("Game of the Week November 15 - 21, 2026", "New week starts November 22, 2026")))
+        assertEquals(utc("2026-11-29T00:00:00Z"), ClubPage.endsAt(pick("Game of the Week November 22 - 28, 2026", "New week starts November 29 - December 5, 2026")))
         assertEquals(utc("2026-11-22T00:00:00Z"), ClubPage.endsAt(pick("Game of the Week November 15 - 21, 2026")))
         assertEquals(utc("2026-12-01T00:00:00Z"), ClubPage.endsAt(pick("Romhack of the Month November 2026")))
         assertEquals(utc("2027-01-01T00:00:00Z"), ClubPage.endsAt(pick("Game of the Season Q4 2026 (Oct 1 - Dec 31)")))
