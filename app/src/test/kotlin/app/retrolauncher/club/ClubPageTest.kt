@@ -41,25 +41,39 @@ object ClubFixture {
         ${card("Alien Hominid (GBA)", "Game of the Week November 15 - 21, 2026", "New week starts November 22, 2026", 5068)}
         ${card("Paper Mario (N64)", "Game of the Season Q4 2026 (Oct 1 - Dec 31)", "", 10056, image = "000001")}
         </div>
-        <div class="jrh-history-row"><div class="jrh-history-row__winners"><div class="jrh-picks-tabs">
-        <div class="jrh-picks-tabs__panel jrh-picks-tabs__panel--gotw"><div class="jrh-paged-list"><div class="jrh-winners-history">
-        ${winner("014430", 5068, "Alien Hominid (GBA)", "November 15 - 21, 2026", 35)}
-        ${winner("017003", 2032, "Tiny Toon Adventures (NES)", "November 8 - 14, 2026", 43)}
-        </div></div></div>
-        <div class="jrh-picks-tabs__panel jrh-picks-tabs__panel--gots"><div class="jrh-paged-list"><div class="jrh-winners-history">
-        ${winner("048361", 10154, "Paper Mario (N64)", "Q4 2026 (Oct 1 - Dec 31)", 18)}
-        ${winner("000002", 32650, "Kingdom Hearts (PS2)", "Q3 2026 (Jul 1 - Sep 30)", 23)}
-        ${winner("000003", 11240, "Castlevania: Symphony of the Night (PS1)", "Q2 2026 (Apr 1 - Jun 30)", 0)}
-        </div></div></div>
-        </div></div></div>
         </body></html>
     """.trimIndent()
 
-    fun winner(image: String, raId: Int, title: String, period: String, beaten: Int) = """
-        <div class="jrh-winners-row jrh-paged-list__item" data-page="1"> <span class="jrh-winners-row__thumb" style="background-image:url('https://retroachievements.org/Images/$image.png')" aria-hidden="true"></span>
-        <span class="jrh-winners-row__title"> <a href="https://retroachievements.org/game/$raId" target="_blank" rel="noopener">$title</a> </span>
-        <span class="jrh-winners-row__period"> $period
-                &middot; $beaten beaten </span></div>
+    /** The games page's Past games list (November 2026), trimmed to a few rows. */
+    val pastPage = """
+        <html><body>
+        <section class="flow" aria-labelledby="past-h">
+        <div class="glist"><ul id="game-list" data-page-size="30">
+        ${game("Alien Hominid", "GBA", 5068, "w", "Game of the Week", "Nov 15 to 21, 2026", "48", "6.8")}
+        ${game("Michael Jackson&#39;s Moonwalker", "MD", 263, "w", "Game of the Week", "Sep 27 to Oct 3, 2026", "31", "6.0")}
+        ${game("Super Ghouls &#39;n Ghosts", "SNES", 4817, "x", "Halloween Special", "2026", "24", "6.5")}
+        ${game("Kingdom Hearts", "PS2", 32650, "s", "Game of the Season", "July to September 2026", "23", "8.1")}
+        ${game("Pok&eacute;mon Renegade Platinum", "NDS", 22341, "r", "Romhack of the Month</span><span class=\"tag r\">Romhack of the Month", "March 2026 and 1 more", "0", "")}
+        ${game("Castlevania: Symphony of the Night", "PS1", 11240, "s", "Game of the Season", "April to June 2026", "0", "")}
+        </ul></div></section>
+        </body></html>
+    """.trimIndent()
+
+    fun game(name: String, sys: String, raId: Int, tag: String, type: String, period: String, beaten: String, rating: String) = """
+        <li data-name="$name $sys" data-tags="$tag" data-sys="$sys" data-year="2026"
+            data-s-latest="2026-11-15T00:00:00Z" data-s-beaten="$beaten" data-s-rating="$rating" data-s-name="x">
+          <a class="grow $tag" href="/games/x/">
+            <span class="g-art"><img class="cover " src="/img/$raId.png" width="44" height="44" alt="$name box art" loading="lazy"></span>
+            <span class="g-main">
+              <strong>$name</strong>
+              <span class="g-pick-inline"><span class="tag $tag">$type</span></span>
+              <span class="g-sub">$sys<span class="g-when"> · $period</span></span>
+            </span>
+            <span class="g-pick"><span class="tag $tag">$type</span><span class="g-sub">$period</span></span>
+            <span class="g-n"><b class="num">$beaten</b><span> beaten</span></span>
+            <span class="g-n g-rate"><b class="num">$rating</b><span> rating</span></span>
+          </a>
+        </li>
     """.trimIndent()
 }
 
@@ -128,13 +142,19 @@ class ClubRepositoryTest {
     private class FakeSite : ClubHttp {
         var body = ClubFixture.page
         var etag = "\"v1\""
+        var pastBody = ClubFixture.pastPage
+        var pastEtag = "\"p1\""
         var offline = false
-        val requests = mutableListOf<String?>() // the ETag sent with each request
+        var pastOffline = false
+        val requests = mutableListOf<String?>() // the ETag sent with each request for the club page
+        val pastRequests = mutableListOf<String?>() // and for the games page
 
         override fun get(url: String, etag: String?): ClubHttp.Response {
-            requests += etag
-            if (offline) throw IOException("offline")
-            return if (etag != null && etag == this.etag) ClubHttp.Response(true, "", etag) else ClubHttp.Response(false, body, this.etag)
+            val past = url == ClubPage.PAST_URL
+            (if (past) pastRequests else requests) += etag
+            if (offline || (past && pastOffline)) throw IOException("offline")
+            val (body, current) = if (past) pastBody to pastEtag else body to this.etag
+            return if (etag != null && etag == current) ClubHttp.Response(true, "", etag) else ClubHttp.Response(false, body, current)
         }
     }
 
@@ -181,6 +201,37 @@ class ClubRepositoryTest {
         site.offline = true
         assertEquals(2, (repo().load(force = true) as ClubResult.Ok).picks.size) // old page still there
     }
+
+    @Test
+    fun `past picks come from the games page, saved and revalidated beside the club page`() {
+        assertEquals(5, (repo().load() as ClubResult.Ok).past.size)
+        assertEquals(listOf<String?>(null), site.pastRequests)
+        now = now.plusSeconds(3600)
+        assertEquals(5, (repo().load() as ClubResult.Ok).past.size) // fresh: from disk
+        assertEquals(1, site.pastRequests.size)
+        repo().load(force = true)
+        assertEquals(listOf(null, "\"p1\""), site.pastRequests)
+        site.offline = true
+        assertEquals(5, (repo().load(force = true) as ClubResult.Ok).past.size)
+    }
+
+    @Test
+    fun `a games page that fails or changes keeps the saved past picks`() {
+        repo().load()
+        site.pastOffline = true
+        val r = repo().load(force = true) as ClubResult.Ok
+        assertEquals(2, r.picks.size)
+        assertEquals(5, r.past.size)
+        site.pastOffline = false
+        site.pastBody = "<html>redesigned</html>"
+        site.pastEtag = "\"p2\""
+        assertEquals(5, (repo().load(force = true) as ClubResult.Ok).past.size)
+        // With nothing saved, a missing games page means no past picks, not a failed load.
+        site.pastOffline = true
+        val fresh = ClubRepository(tmp.newFolder(), site) { now }.load() as ClubResult.Ok
+        assertEquals(2, fresh.picks.size)
+        assertEquals(emptyList<ClubPick>(), fresh.past)
+    }
 }
 
 class RaConsolesTest {
@@ -200,7 +251,7 @@ class RaConsolesTest {
     }
 }
 
-/** Opt-in: parses a real saved copy of the club page (`-PclubPage=...`). */
+/** Opt-in: parses real saved copies of the club page (`-PclubPage=...`) and games page (`-PclubGames=...`). */
 class SavedClubPageTest {
     @Test
     fun `a real saved page parses`() {
@@ -209,9 +260,10 @@ class SavedClubPageTest {
         val html = java.io.File(path).readText()
         val picks = ClubPage.parse(html)
         for (p in picks) println("${p.event} | ${p.title} | console=${p.console?.name} game=${p.gameId} | ${p.stats} | ${p.imageUrl}")
-        val past = ClubPage.parsePast(html)
+        val pastPath = System.getProperty("club.games").orEmpty()
+        val past = if (pastPath.isEmpty()) emptyList() else ClubPage.parsePast(java.io.File(pastPath).readText())
         println("past picks: ${past.size}; first: ${past.firstOrNull()?.let { it.event + " | " + it.title }}; unknown consoles: ${past.filter { it.console == null }.map { it.title }}")
-        assertTrue(past.isNotEmpty())
+        if (pastPath.isNotEmpty()) assertTrue(past.isNotEmpty() && past.all { it.console != null && it.gameId > 0 })
         println("next change after now: ${ClubPage.nextChange(html, Instant.now())}")
         assertTrue(picks.isNotEmpty())
         assertTrue(picks.all { it.console != null && it.gameId > 0 && it.raUrl.isNotEmpty() })
@@ -281,28 +333,48 @@ class StatsOrderTest {
 
 class PastPicksParseTest {
     @Test
-    fun `past winners parse by type, newest first`() {
-        val past = ClubPage.parsePast(ClubFixture.page)
+    fun `past games parse newest first, specials left out`() {
+        val past = ClubPage.parsePast(ClubFixture.pastPage)
         assertEquals(
             listOf(
                 "Game of the Week November 15 - 21, 2026" to "Alien Hominid (GBA)",
-                "Game of the Week November 8 - 14, 2026" to "Tiny Toon Adventures (NES)",
-                "Game of the Season Q4 2026 (Oct 1 - Dec 31)" to "Paper Mario (N64)",
+                "Game of the Week September 27 - October 3, 2026" to "Michael Jackson's Moonwalker (MD)",
                 "Game of the Season Q3 2026 (Jul 1 - Sep 30)" to "Kingdom Hearts (PS2)",
+                "Romhack of the Month March 2026" to "Pokémon Renegade Platinum (NDS)",
                 "Game of the Season Q2 2026 (Apr 1 - Jun 30)" to "Castlevania: Symphony of the Night (PS1)",
             ),
             past.map { it.event to it.title },
         )
         // Before the club counted, "0 beaten" means no data, so there's no Beaten stat.
         assertEquals(emptyList<ClubStat>(), past.last().stats)
-        assertEquals(listOf(ClubStat("Beaten", "23")), past[3].stats)
-        val toons = past[1]
-        assertEquals(2032, toons.gameId)
-        assertEquals(RaConsoles.NINTENDO, toons.console?.id)
-        assertEquals("https://retroachievements.org/Images/017003.png", toons.imageUrl)
-        assertEquals(listOf(ClubStat("Beaten", "43")), toons.stats)
-        // The current picks still parse as before.
-        assertEquals(2, ClubPage.parse(ClubFixture.page).size)
+        assertEquals(listOf(ClubStat("Rating", "8.1/10"), ClubStat("Beaten", "23")), past[2].stats)
+        val alien = past[0]
+        assertEquals(5068, alien.gameId)
+        assertEquals("https://retroachievements.org/game/5068", alien.raUrl)
+        assertEquals(RaConsoles.GAMEBOY_ADVANCE, alien.console?.id)
+        assertEquals("Alien Hominid", alien.displayTitle)
+        assertEquals("https://www.playretrogamesclub.com/img/5068.png", alien.imageUrl)
+        assertEquals(RaConsoles.MEGA_DRIVE, past[1].console?.id)
+        assertEquals("2026-09-27", ClubPage.periodStart(past[1].event.removePrefix("Game of the Week").trim()).toString())
+    }
+
+    @Test
+    fun `every console the games page uses is known`() {
+        for (sys in listOf("Arcade", "DC", "GB", "GBA", "GBC", "GC", "MD", "N64", "NDS", "NES", "PCE", "PS1", "PS2", "PSP", "SMS", "SNES", "Wii")) {
+            assertTrue(sys, RaConsoles.fromTitle("Game ($sys)") != null)
+        }
+    }
+
+    @Test
+    fun `past periods read like the current picks`() {
+        assertEquals("November 15 - 21, 2026", ClubPage.pastPeriod("Nov 15 to 21, 2026"))
+        assertEquals("August 30 - September 5, 2026", ClubPage.pastPeriod("Aug 30 to Sep 5, 2026"))
+        assertEquals("December 28 - January 3, 2027", ClubPage.pastPeriod("Dec 28 to Jan 3, 2027"))
+        assertEquals("July 2024", ClubPage.pastPeriod("July 2024"))
+        assertEquals("March 2026", ClubPage.pastPeriod("March 2026 and 1 more"))
+        assertEquals("Q1 2027 (Jan 1 - Mar 31)", ClubPage.pastPeriod("January to March 2027"))
+        assertEquals("Q4 2026 (Oct 1 - Dec 31)", ClubPage.pastPeriod("October to December 2026"))
+        assertEquals("2026", ClubPage.pastPeriod("2026"))
     }
 
     @Test

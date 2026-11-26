@@ -1,7 +1,7 @@
 # PRGC Launcher
 
 An Android app that shows what the
-[Play Retro Games Club](https://www.joeysretrohandhelds.com/play-retro-games-club/)
+[Play Retro Games Club](https://www.playretrogamesclub.com/)
 is playing right now (Game of the Week, Game of the Month, Romhack of the Month,
 Game of the Season and any specials) and launches each game from your own ROMs in
 an installed emulator. It's built for controller-first handhelds such as the
@@ -141,7 +141,8 @@ Ideas we've looked into and set aside for now.
 
 Add `-PcatalogueLive=true` to check every entry of the live emulator catalogue,
 or `-PclubPage=/path/to/saved.html` to check the parser against a saved copy of
-the club's page. `-PromFile=/path/to/image -PromConsole=41 -PromHashes=/path/to/list.json`
+the club's page (`-PclubGames=/path/to/games.html` adds its games page, where the
+past picks come from). `-PromFile=/path/to/image -PromConsole=41 -PromHashes=/path/to/list.json`
 hashes a real disc image (console ID from RetroAchievements; the list is a saved
 `dorequest.php?r=hashlibrary&c=41`) and says whether RetroAchievements recognises it.
 

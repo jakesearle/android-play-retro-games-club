@@ -63,6 +63,8 @@ android {
         unitTests.all {
             // ./gradlew :app:testDebugUnitTest -PclubPage=/path/to/saved.html checks the parser on a real page.
             it.systemProperty("club.page", project.findProperty("clubPage") ?: "")
+            // -PclubGames=/path/to/games.html does the same for the games page's past picks.
+            it.systemProperty("club.games", project.findProperty("clubGames") ?: "")
             // -PdiscFile=/path/to/game.chd checks the disc reader and PS1 hash on a real image.
             it.systemProperty("disc.file", project.findProperty("discFile") ?: "")
             // -PromFile=/path/to/image [-PromConsole=41] [-PromHashes=/path/to/hashlibrary.json] hashes a

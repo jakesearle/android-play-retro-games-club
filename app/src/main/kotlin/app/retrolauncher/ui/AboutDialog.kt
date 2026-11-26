@@ -37,7 +37,7 @@ import kotlinx.coroutines.launch
 /** The club's own pages, as linked from its site. */
 object ClubLinks {
     const val DISCORD = "https://joeysrh.link/discord"
-    const val LEADERBOARD = "https://www.joeysretrohandhelds.com/play-retro-games-club/#leaderboard"
+    const val LEADERBOARD = "https://www.playretrogamesclub.com/leaderboards/"
 }
 
 /** Settings › About: the version, what the app sends where, the club's links, and the licences. */
